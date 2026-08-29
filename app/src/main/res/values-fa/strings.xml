@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- ===================== Common ===================== -->
+    <string name="common_continue">ادامه</string>
+    <string name="common_back">بازگشت</string>
+    <string name="common_save">ذخیره</string>
+    <string name="common_cancel">لغو</string>
+    <string name="common_edit">ویرایش</string>
+    <string name="common_delete">حذف</string>
+    <string name="common_add">افزودن</string>
+    <string name="common_done">تمام</string>
+    <string name="common_retry">تلاش دوباره</string>
+    <string name="common_confirm">تأیید</string>
+    <string name="common_close">بستن</string>
+    <string name="common_skip">رد کردن</string>
+    <string name="common_kg">کیلوگرم</string>
+    <string name="common_cm">سانتی‌متر</string>
+    <string name="common_kcal">کالری</string>
+    <string name="common_grams_short">گرم</string>
+    <string name="common_step_of">مرحله %1$d از %2$d</string>
+    <string name="common_optional">اختیاری</string>
+
+    <!-- ===================== Splash ===================== -->
+    <string name="splash_tagline">کالری‌هایت، به‌زیبایی ثبت می‌شوند</string>
+
+    <!-- ===================== Language Selection ===================== -->
+    <string name="language_select_title">زبان برنامه را انتخاب کن</string>
+    <string name="language_select_subtitle">بعداً می‌توانی این را از پروفایل تغییر بدهی</string>
+    <string name="language_continue">ادامه</string>
+
+    <!-- ===================== Onboarding ===================== -->
+    <string name="onboarding_title">بیا پروفایلت را بسازیم</string>
+    <string name="onboarding_step_name_question">اسمت چیه؟</string>
+    <string name="onboarding_step_name_placeholder">مثلاً علی</string>
+    <string name="onboarding_step_age_question">چند سالته؟</string>
+    <string name="onboarding_step_age_unit">سال</string>
+    <string name="onboarding_step_gender_question">جنسیتت را انتخاب کن</string>
+    <string name="onboarding_gender_male">مرد</string>
+    <string name="onboarding_gender_female">زن</string>
+    <string name="onboarding_step_height_question">قدت چقدره؟</string>
+    <string name="onboarding_step_weight_question">وزن فعلی‌ات چقدره؟</string>
+    <string name="onboarding_step_activity_question">میزان فعالیت روزانه‌ات چقدره؟</string>
+    <string name="onboarding_step_goal_question">هدفت چیه؟</string>
+    <string name="onboarding_step_target_weight_question">وزن هدفت چقدره؟</string>
+    <string name="onboarding_target_weight_hint">اگر هدفت حفظ وزن است، این مقدار برابر وزن فعلی‌ات در نظر گرفته می‌شود</string>
+
+    <string name="activity_sedentary_title">کم‌تحرک</string>
+    <string name="activity_sedentary_desc">تحرک کم یا بدون ورزش، کار پشت میز</string>
+    <string name="activity_light_title">فعالیت سبک</string>
+    <string name="activity_light_desc">ورزش سبک ۱ تا ۳ روز در هفته</string>
+    <string name="activity_moderate_title">فعالیت متوسط</string>
+    <string name="activity_moderate_desc">ورزش متوسط ۳ تا ۵ روز در هفته</string>
+    <string name="activity_very_title">فعالیت زیاد</string>
+    <string name="activity_very_desc">ورزش سنگین ۶ تا ۷ روز در هفته</string>
+    <string name="activity_extreme_title">بسیار فعال</string>
+    <string name="activity_extreme_desc">ورزش بسیار سنگین، کار بدنی، تمرین دو نوبت در روز</string>
+
+    <string name="goal_lose_title">کاهش وزن</string>
+    <string name="goal_lose_desc">کسری کالری ملایم برای کاهش وزن سالم</string>
+    <string name="goal_maintain_title">حفظ وزن</string>
+    <string name="goal_maintain_desc">ماندن در تعادل روی وزن فعلی</string>
+    <string name="goal_gain_title">افزایش وزن</string>
+    <string name="goal_gain_desc">مازاد کالری کنترل‌شده برای افزایش تدریجی وزن</string>
+
+    <string name="onboarding_finish">پایان تنظیمات</string>
+    <string name="onboarding_error_required_field">لطفاً مقدار معتبر وارد کنید.</string>
+
+    <!-- ===================== Bottom Navigation ===================== -->
+    <string name="nav_home">خانه</string>
+    <string name="nav_food">ثبت غذا</string>
+    <string name="nav_progress">پیشرفت</string>
+    <string name="nav_profile">پروفایل</string>
+
+    <!-- ===================== Home ===================== -->
+    <string name="home_greeting">سلام %1$s</string>
+    <string name="home_greeting_subtitle">امروز چطور پیش می‌ری؟</string>
+    <string name="home_calories_title">کالری امروز</string>
+    <string name="home_calories_of_target">%1$s از %2$s کالری</string>
+    <string name="home_calories_remaining">%1$s کالری باقی مانده</string>
+    <string name="home_calories_over">%1$s کالری بیشتر از هدف</string>
+    <string name="home_macros_title">درشت‌مغذی‌ها</string>
+    <string name="home_macro_protein">پروتئین</string>
+    <string name="home_macro_carbs">کربوهیدرات</string>
+    <string name="home_macro_fat">چربی</string>
+    <string name="home_bmi_title">شاخص توده بدنی</string>
+    <string name="home_bmi_current_weight">فعلی</string>
+    <string name="home_bmi_target_weight">هدف</string>
+    <string name="home_goal_title">هدف تو</string>
+    <string name="home_goal_progress">%1$d٪ تا رسیدن به هدف</string>
+    <string name="home_summary_title">خلاصه امروز</string>
+    <string name="home_summary_meals">%1$d وعده ثبت‌شده</string>
+    <string name="home_quick_actions_title">دسترسی سریع</string>
+    <string name="home_quick_action_log_food">ثبت غذا</string>
+    <string name="home_quick_action_log_weight">ثبت وزن</string>
+
+    <string name="bmi_underweight">کمبود وزن</string>
+    <string name="bmi_normal">وزن طبیعی</string>
+    <string name="bmi_overweight">اضافه وزن</string>
+    <string name="bmi_obese">چاقی</string>
+
+    <!-- ===================== Food ===================== -->
+    <string name="food_screen_title">ثبت غذا</string>
+    <string name="food_analyze_title">غذایت را با عکس ثبت کن</string>
+    <string name="food_analyze_subtitle">یک عکس انتخاب کن تا کالری‌ی حدودی‌اش را برایت تخمین بزنیم</string>
+    <string name="food_choose_photo">انتخاب عکس از گالری</string>
+    <string name="food_or_manual_entry">یا به‌صورت دستی اضافه کن</string>
+    <string name="food_manual_entry_title">افزودن دستی غذا</string>
+    <string name="food_name_label">نام غذا</string>
+    <string name="food_name_placeholder">مثلاً سالاد مرغ گریل‌شده</string>
+    <string name="food_portion_label">مقدار</string>
+    <string name="food_portion_placeholder">مثلاً یک کاسه، ۲۵۰ گرم</string>
+    <string name="food_calories_label">کالری</string>
+    <string name="food_protein_label">پروتئین (گرم)</string>
+    <string name="food_carbs_label">کربوهیدرات (گرم)</string>
+    <string name="food_fat_label">چربی (گرم)</string>
+    <string name="food_meal_type_label">وعده غذایی</string>
+    <string name="meal_breakfast">صبحانه</string>
+    <string name="meal_lunch">ناهار</string>
+    <string name="meal_dinner">شام</string>
+    <string name="meal_snack">میان‌وعده</string>
+    <string name="food_today_title">غذای امروز</string>
+    <string name="food_empty_title">هنوز غذایی ثبت نشده</string>
+    <string name="food_empty_subtitle">هنوز غذایی برای امروز ثبت نکرده‌ای.</string>
+    <string name="food_empty_cta">اولین وعده را ثبت کن</string>
+    <string name="food_delete_confirm_title">این مورد حذف شود؟</string>
+    <string name="food_delete_confirm_message">این غذا از لیست امروز حذف خواهد شد.</string>
+
+    <string name="food_analyzing_title">در حال تحلیل غذای شما…</string>
+    <string name="food_analyzing_subtitle">چند لحظه صبر کنید</string>
+    <string name="food_result_title">نتیجه تحلیل</string>
+    <string name="food_result_estimate_note">مقادیر نمایش‌داده‌شده تقریبی هستند.</string>
+    <string name="food_result_confidence">میزان اطمینان: %1$d٪</string>
+    <string name="food_result_add_to_today">افزودن به امروز</string>
+    <string name="food_result_edit">ویرایش</string>
+    <string name="food_analysis_error">نتوانستیم این غذا را تشخیص دهیم. لطفاً عکس دیگری انتخاب کنید یا غذا را دستی وارد کنید.</string>
+
+    <!-- ===================== Weight ===================== -->
+    <string name="weight_log_title">ثبت وزن</string>
+    <string name="weight_log_label">وزن</string>
+    <string name="weight_log_date_label">تاریخ</string>
+    <string name="weight_empty_title">هنوز وزنی ثبت نشده است.</string>
+    <string name="weight_empty_cta">وزن خود را ثبت کن</string>
+
+    <!-- ===================== Progress ===================== -->
+    <string name="progress_screen_title">پیشرفت</string>
+    <string name="progress_weight_summary_title">خلاصه وزن</string>
+    <string name="progress_weight_starting">وزن شروع</string>
+    <string name="progress_weight_current">وزن فعلی</string>
+    <string name="progress_weight_target">وزن هدف</string>
+    <string name="progress_weight_total_change">تغییر کلی</string>
+    <string name="progress_weight_chart_title">روند وزن</string>
+    <string name="progress_calorie_chart_title">تاریخچه کالری</string>
+    <string name="progress_filter_7d">۷ روز</string>
+    <string name="progress_filter_30d">۳۰ روز</string>
+    <string name="progress_filter_3m">۳ ماه</string>
+    <string name="progress_filter_all">همه</string>
+    <string name="progress_monthly_report_title">گزارش ماهانه</string>
+    <string name="progress_report_total_calories">مجموع کالری</string>
+    <string name="progress_report_avg_calories">میانگین روزانه</string>
+    <string name="progress_report_start_weight">ابتدای ماه</string>
+    <string name="progress_report_end_weight">انتهای ماه</string>
+    <string name="progress_report_weight_change">تغییر وزن</string>
+    <string name="progress_report_logged_days">%1$d روز ثبت‌شده</string>
+    <string name="progress_report_summary_loss">این ماه %1$s کیلوگرم وزن کم کردی و در بیشتر روزها نزدیک به هدف کالری خودت بودی.</string>
+    <string name="progress_report_summary_gain">این ماه %1$s کیلوگرم وزن اضافه کردی و در بیشتر روزها نزدیک به هدف کالری خودت بودی.</string>
+    <string name="progress_report_summary_stable">این ماه وزنت تقریباً ثابت ماند و کالری‌هایت را پیگیری کردی.</string>
+    <string name="progress_report_summary_no_data">برای دیدن خلاصه شخصی‌سازی‌شده، غذا و وزنت را در این ماه ثبت کن.</string>
+    <string name="progress_empty_title">داده کافی وجود ندارد</string>
+    <string name="progress_empty_subtitle">با ثبت غذا و وزن، نمودارهایت اینجا نمایش داده می‌شود.</string>
+
+    <!-- ===================== Profile ===================== -->
+    <string name="profile_screen_title">پروفایل</string>
+    <string name="profile_edit_info">ویرایش اطلاعات</string>
+    <string name="profile_field_name">نام</string>
+    <string name="profile_field_age">سن</string>
+    <string name="profile_field_gender">جنسیت</string>
+    <string name="profile_field_height">قد</string>
+    <string name="profile_field_weight">وزن فعلی</string>
+    <string name="profile_field_activity">میزان فعالیت</string>
+    <string name="profile_field_goal">هدف</string>
+    <string name="profile_field_target_weight">وزن هدف</string>
+    <string name="profile_field_daily_calories">هدف کالری روزانه</string>
+    <string name="profile_section_settings">تنظیمات</string>
+    <string name="profile_app_language">زبان برنامه</string>
+    <string name="profile_about_app">درباره برنامه</string>
+    <string name="profile_privacy">حریم خصوصی</string>
+    <string name="profile_clear_data">پاک کردن اطلاعات</string>
+    <string name="profile_reset_app">بازنشانی برنامه</string>
+    <string name="profile_clear_data_confirm_title">همه اطلاعات پاک شود؟</string>
+    <string name="profile_clear_data_confirm_message">تاریخچه غذا و وزن تو برای همیشه حذف می‌شود. پروفایلت حفظ خواهد شد.</string>
+    <string name="profile_reset_app_confirm_title">برنامه بازنشانی شود؟</string>
+    <string name="profile_reset_app_confirm_message">پروفایل و تمام اطلاعات ثبت‌شده تو برای همیشه حذف شده و مراحل شروع دوباره نمایش داده می‌شود.</string>
+    <string name="profile_about_body">کالری‌من به تو کمک می‌کند کالری‌ها را ثبت کنی، برای وزن هدفت برنامه‌ریزی کنی و تغذیه روزانه‌ات را بهتر بشناسی. تمام محاسبات تخمینی هستند و جایگزین توصیه پزشکی نیستند.</string>
+    <string name="profile_privacy_body">تمام اطلاعات تو به‌صورت محلی روی گوشی‌ات ذخیره می‌شود. هیچ داده‌ای از گوشی تو خارج نمی‌شود، مگر اینکه در آینده از قابلیت تحلیل آنلاین عکس غذا استفاده کنی.</string>
+    <string name="profile_saved_confirmation">پروفایل به‌روزرسانی شد</string>
+
+    <!-- ===================== Errors ===================== -->
+    <string name="error_no_internet">اتصال اینترنت برقرار نیست. لطفاً دوباره تلاش کنید.</string>
+    <string name="error_invalid_value">لطفاً مقدار معتبر وارد کنید.</string>
+    <string name="error_generic">مشکلی پیش آمد. لطفاً دوباره تلاش کنید.</string>
+
+</resources>

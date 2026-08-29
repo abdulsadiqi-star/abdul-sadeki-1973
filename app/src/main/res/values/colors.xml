@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors ui/theme/Color.kt. Used only for the pre-Compose window/splash theme. -->
+    <color name="background_main">#09051D</color>
+    <color name="background_secondary">#10072B</color>
+    <color name="purple_primary">#8B5CF6</color>
+    <color name="purple_bright">#A855F7</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B8B4CE</color>
+</resources>

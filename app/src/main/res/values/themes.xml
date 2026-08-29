@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base application theme. CalorieMe is an intentionally dark, premium
+         wellness app, so the theme is not day/night dependent. -->
+    <style name="Theme.CalorieMe" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">@color/background_main</item>
+        <item name="android:navigationBarColor">@color/background_main</item>
+        <item name="android:windowBackground">@color/background_main</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+    </style>
+
+    <!-- Shown for the brief window before Compose takes over. -->
+    <style name="Theme.CalorieMe.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/background_main</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.CalorieMe</item>
+    </style>
+
+</resources>
