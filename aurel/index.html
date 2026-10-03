@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AUREL A01 — Time made visible</title>
+  <meta name="description" content="AUREL A01 — a mechanical watch you can disassemble with your scroll wheel. A scroll-scrubbed, fully procedural 3D film." />
+  <meta name="theme-color" content="#F4F1EA" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23090909' stroke-width='2'/%3E%3Cpath d='M16 7v9l6 4' fill='none' stroke='%23B99A68' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E" />
+</head>
+<body class="is-loading">
+  <div id="loader" aria-hidden="true">
+    <div class="loader-mark">AUREL</div>
+    <div class="loader-sub">Assembling A01</div>
+    <div class="loader-bar"><i></i></div>
+  </div>
+
+  <!-- The fixed stage: type (behind) → WebGL watch → type (in front) → HUD -->
+  <div id="stage">
+    <div id="bg-light"></div>
+
+    <div id="type-back" class="layer">
+      <!-- 01 hero -->
+      <h1 class="giant hero-word" id="t-time" data-reveal><span class="line"><span class="in">TIME</span></span></h1>
+      <div class="giant hero-word" id="t-made" data-reveal><span class="line"><span class="in">MADE</span></span></div>
+      <!-- 02 form -->
+      <div class="giant" id="t-form" data-reveal><span class="line"><span class="in">FORM</span></span></div>
+      <!-- 03 depth -->
+      <div class="giant outline" id="t-depth" data-reveal><span class="line"><span class="in">DEPTH</span></span></div>
+      <!-- 04 exploded -->
+      <h2 class="giant ghost-3" id="t-exp" data-reveal>
+        <span class="line"><span class="in">EVERY PART</span></span>
+        <span class="line"><span class="in">GETS ROOM</span></span>
+        <span class="line"><span class="in">TO BREATHE.</span></span>
+      </h2>
+      <!-- 06 precision -->
+      <div class="num-wrap" id="t-n1" data-reveal><span class="num"><span class="line"><span class="in">28,800</span></span></span><span class="unit">VPH</span></div>
+      <div class="num-wrap" id="t-n2" data-reveal><span class="num"><span class="line"><span class="in">72</span></span></span><span class="unit">HOURS</span></div>
+      <div class="num-wrap" id="t-n3" data-reveal><span class="num"><span class="line"><span class="in">164</span></span></span><span class="unit">COMPONENTS</span></div>
+      <div class="num-wrap" id="t-n4" data-reveal><span class="num"><span class="line"><span class="in">5</span></span></span><span class="unit">ATM</span></div>
+      <!-- 07 reassembly -->
+      <h2 class="giant ghost-2" id="t-reass" data-reveal>
+        <span class="line"><span class="in">EVERYTHING</span></span>
+        <span class="line"><span class="in">LOCKS IN.</span></span>
+      </h2>
+      <!-- 08 final -->
+      <div class="giant" id="t-final" data-reveal><span class="line"><span class="in">AUREL</span></span><span class="line"><span class="in">A01</span></span></div>
+    </div>
+
+    <canvas id="gl" aria-label="Interactive 3D AUREL A01 watch"></canvas>
+
+    <div id="type-front" class="layer">
+      <div class="giant hero-word front" id="t-visible" data-reveal><span class="line"><span class="in">VISIBLE.</span></span></div>
+
+      <p class="copy serif" id="c-form" data-reveal><span class="line"><span class="in">A case shaped<br/>by light.</span></span></p>
+
+      <p class="copy serif big" id="c-depth" data-reveal>
+        <span class="line"><span class="in">Forty millimetres.</span></span>
+        <span class="line"><span class="in"><em>Infinite depth.</em></span></span>
+      </p>
+
+      <div class="copy small" id="c-exp" data-reveal>
+        <span class="eyebrow">04 — Exploded view</span>
+        <p>Twenty-seven components, drawn apart across space and depth — so each can be seen for what it is.</p>
+      </div>
+
+      <div class="copy head" id="c-cal" data-reveal>
+        <span class="eyebrow">05 — Inside the calibre</span>
+        <h3>Scrolling now enters<br/>the machine.</h3>
+      </div>
+      <div class="caption" id="cap-balance" data-reveal><span class="eyebrow">Balance wheel · 4 Hz</span><h4>The heartbeat.</h4><p>A free-sprung balance with a blued hairspring, oscillating 28,800 times an hour.</p></div>
+      <div class="caption" id="cap-train" data-reveal><span class="eyebrow">Gear train · 5 wheels</span><h4>The transmission.</h4><p>Barrel, centre, third, fourth and escape wheel — each meshing with its pinion.</p></div>
+      <div class="caption" id="cap-rotor" data-reveal><span class="eyebrow">Rotor · 22k gold</span><h4>The winding.</h4><p>A skeletonised gold segment turns every movement of the wrist into stored power.</p></div>
+      <div class="caption" id="cap-jewels" data-reveal><span class="eyebrow">Jewels · 26 rubies</span><h4>The bearings.</h4><p>Synthetic ruby, set in gold chatons, so steel pivots never meet steel.</p></div>
+      <div class="caption" id="cap-bridges" data-reveal><span class="eyebrow">Bridges · Côtes de Genève</span><h4>The architecture.</h4><p>Hand-bevelled, striped and anchored with blued screws.</p></div>
+
+      <div class="copy small precision-copy" id="c-prec" data-reveal>
+        <span class="eyebrow">06 — Precision</span>
+        <p>Measured, not described.</p>
+      </div>
+      <p class="copy serif" id="c-reass" data-reveal><span class="line"><span class="in">Every part returns —<br/><em>exactly where it began.</em></span></span></p>
+
+      <div class="final-copy" id="c-final" data-reveal>
+        <span class="eyebrow">08 — AUREL A01</span>
+        <h2><span class="line"><span class="in">MECHANICAL.</span></span><span class="line"><span class="in">ARCHITECTURAL.</span></span><span class="line"><span class="in">UNCOMPROMISING.</span></span></h2>
+        <div class="cta-row">
+          <button class="btn btn-primary" id="btn-discover" type="button">DISCOVER A01</button>
+          <button class="btn btn-ghost" id="btn-replay" type="button"><span aria-hidden="true">↺</span> REPLAY THE EXPERIENCE</button>
+        </div>
+      </div>
+    </div>
+
+    <svg id="callouts" aria-hidden="true"></svg>
+    <div id="tags" aria-hidden="true"></div>
+
+    <header class="hud">
+      <a class="brand" href="#top" id="brand">AUREL</a>
+      <span class="model">Calibre A01 · Automatic</span>
+      <button class="sound" id="btn-sound" type="button" aria-pressed="false" aria-label="Toggle sound"><i></i><span>SOUND OFF</span></button>
+    </header>
+
+    <nav class="chapters" id="chapters" aria-label="Chapters"></nav>
+
+    <div class="hint" id="hint"><span>SCROLL TO DISASSEMBLE</span><i></i></div>
+    <div class="progress" aria-hidden="true"><i id="progress-bar"></i></div>
+    <div class="chapter-label" id="chapter-label" aria-live="polite"></div>
+  </div>
+
+  <!-- Spec sheet (DISCOVER A01) -->
+  <dialog id="spec" aria-labelledby="spec-title">
+    <form method="dialog"><button class="close" aria-label="Close">✕</button></form>
+    <span class="eyebrow">Reference A01.40.S</span>
+    <h2 id="spec-title">AUREL A01</h2>
+    <dl>
+      <div><dt>Case</dt><dd>316L steel · 40 mm · 11.9 mm</dd></div>
+      <div><dt>Crystal</dt><dd>Domed sapphire, AR coated · 0.8 mm edge</dd></div>
+      <div><dt>Calibre</dt><dd>A01 automatic · 28,800 vph · 72 h reserve</dd></div>
+      <div><dt>Components</dt><dd>164 parts · 26 ruby jewels</dd></div>
+      <div><dt>Water resistance</dt><dd>5 ATM</dd></div>
+      <div><dt>Strap</dt><dd>Calfskin, tang buckle</dd></div>
+    </dl>
+    <p class="fine">AUREL is a fictional brand created for this interactive study.</p>
+  </dialog>
+
+  <div id="scroll-space"></div>
+  <noscript><p style="position:fixed;inset:0;display:grid;place-items:center;background:#F4F1EA;color:#090909;font:16px sans-serif">AUREL A01 needs JavaScript and WebGL.</p></noscript>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
