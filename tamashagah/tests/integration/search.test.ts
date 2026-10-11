@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { parseSearchState, type SearchParams } from '@/features/search/schemas';
 import { searchChannels, searchVideos, suggest } from '@/features/search/queries';
-import { createCategory, createChannel, createUser, createVideo } from '../helpers/factories';
+import { createCategory, createUser, createVideo } from '../helpers/factories';
 import { buildChannelSearchName } from '@/lib/persian';
 import { daysAgoDate } from '../support/discovery';
 
