@@ -9,7 +9,7 @@
 import { Upload, type DetailedError, type PreviousUpload } from 'tus-js-client';
 import { UPLOAD_CHUNK_BYTES, UPLOAD_ENDPOINT } from '../limits';
 import type { RawUploadError } from './errors';
-import type { TransportEvents, TransportFactory, UploadTransport } from './engine';
+import type { TransportEvents, TransportFactory, TransportHints, UploadTransport } from './engine';
 
 /** Wait times (ms) between automatic retries of a failed request; tus resets the sequence whenever progress is made. */
 export const UPLOAD_RETRY_DELAYS = [0, 1_000, 3_000, 5_000, 10_000, 20_000];
@@ -38,14 +38,16 @@ const creationTime = (previous: PreviousUpload) => {
 };
 
 export function createTusTransportFactory(config: TusTransportConfig = {}): TransportFactory {
-  return (file: File, events: TransportEvents): UploadTransport => {
-    let resumed = false;
+  return (file: File, events: TransportEvents, hints: TransportHints = {}): UploadTransport => {
+    let resumed = Boolean(hints.resumeUrl);
     let prepared: Promise<void> | null = null;
     let wanted = false;
     let generation = 0;
 
     const upload = new Upload(file, {
       endpoint: config.endpoint ?? UPLOAD_ENDPOINT,
+      // Continue a specific unfinished upload; when the server no longer knows it, tus creates a new one at `endpoint`.
+      uploadUrl: hints.resumeUrl ?? null,
       chunkSize: config.chunkSize ?? UPLOAD_CHUNK_BYTES,
       retryDelays: config.retryDelays ?? UPLOAD_RETRY_DELAYS,
       // The server derives everything else; it re-validates both values and replaces them with sanitized ones.
@@ -62,6 +64,7 @@ export function createTusTransportFactory(config: TusTransportConfig = {}): Tran
 
     /** Look for an earlier upload of the same file (once). Storage problems just mean "start from scratch". */
     function prepare(): Promise<void> {
+      if (hints.resumeUrl) return Promise.resolve();
       prepared ??= upload
         .findPreviousUploads()
         .then((previous) => {

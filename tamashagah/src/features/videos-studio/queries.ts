@@ -9,6 +9,7 @@ import { studioTabs, type StudioTab } from './labels';
 import { pageSizeFor, studioVideoOrderBy, studioVideoWhere } from './filters';
 import type { StudioListParams } from './schemas';
 import type { SubtitleDto } from './service';
+import { metadataFromStored, type MetadataFormValues } from './metadata';
 
 // ---------------------------------------------------------------------------
 // The list (`/studio/videos`)
@@ -128,7 +129,14 @@ export const studioTabValues = studioTabs.map((t) => t.value);
 // Upload page
 // ---------------------------------------------------------------------------
 
-export type PendingUpload = { id: string; filename: string; sizeBytes: number; createdAt: string };
+export type PendingUpload = {
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  createdAt: string;
+  /** What the creator already saved for it, so a resumed upload continues with the same form. */
+  metadata: MetadataFormValues;
+};
 
 /** Uploads that were started but not finished (the browser can resume them when the same file is picked again). */
 export async function getPendingUploads(channelId: string): Promise<PendingUpload[]> {
@@ -137,14 +145,48 @@ export async function getPendingUploads(channelId: string): Promise<PendingUploa
     where: { channelId, processingStatus: 'AWAITING_UPLOAD', createdAt: { gte: since } },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: 20,
-    select: { id: true, originalFilename: true, sourceSizeBytes: true, createdAt: true },
+    select: {
+      id: true,
+      originalFilename: true,
+      sourceSizeBytes: true,
+      createdAt: true,
+      title: true,
+      description: true,
+      tags: true,
+      categoryId: true,
+      language: true,
+      visibility: true,
+      processingStatus: true,
+      publishStatus: true,
+      publishOnReady: true,
+      scheduledFor: true,
+      commentsEnabled: true,
+      ageRestricted: true,
+      assets: { where: { kind: 'SOURCE' }, take: 1, select: { meta: true } },
+    },
   });
   return rows.map((r) => ({
     id: r.id,
     filename: r.originalFilename ?? 'ویدیو',
     sizeBytes: toNumber(r.sourceSizeBytes),
     createdAt: r.createdAt.toISOString(),
+    metadata: metadataFromStored({
+      ...r,
+      kindChoice: ((r.assets[0]?.meta ?? {}) as { kindChoice?: 'auto' | 'VIDEO' | 'SHORT' }).kindChoice ?? 'auto',
+    }),
   }));
+}
+
+export type UploadUsage = { count: number; bytes: number };
+
+/** What the channel has already uploaded in the last 24 hours (the quota window the server enforces). */
+export async function getUploadUsage(channelId: string): Promise<UploadUsage> {
+  const usage = await db.video.aggregate({
+    where: { channelId, createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) } },
+    _count: { _all: true },
+    _sum: { sourceSizeBytes: true },
+  });
+  return { count: usage._count._all, bytes: toNumber(usage._sum.sourceSizeBytes) };
 }
 
 /** Videos still being processed (shown on the upload page so a refresh does not lose track of them). */
@@ -229,6 +271,8 @@ export type StudioEditData = {
   customPoster: boolean;
   subtitles: SubtitleDto[];
   channelHandle: string;
+  /** Initial values of the metadata form. */
+  metadata: MetadataFormValues;
 };
 
 /** Everything the edit page needs; `null` when the video does not exist or the actor may not manage it. */
@@ -329,5 +373,20 @@ export async function getStudioEditData(actor: Actor, videoId: string): Promise<
         url: mediaUrl(a.storageKey)!,
       })),
     channelHandle: row.channel.handle,
+    metadata: metadataFromStored({
+      title: row.title,
+      description: row.description,
+      tags: row.tags,
+      categoryId: row.categoryId,
+      language: row.language,
+      visibility: row.visibility,
+      processingStatus: row.processingStatus,
+      publishStatus: row.publishStatus,
+      publishOnReady: row.publishOnReady,
+      scheduledFor: row.scheduledFor,
+      commentsEnabled: row.commentsEnabled,
+      ageRestricted: row.ageRestricted,
+      kindChoice: row.processingStatus === 'READY' ? row.kind : (sourceMeta.kindChoice ?? 'auto'),
+    }),
   };
 }

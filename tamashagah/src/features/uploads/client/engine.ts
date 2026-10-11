@@ -56,7 +56,12 @@ export interface UploadTransport {
   terminate(): Promise<void>;
 }
 
-export type TransportFactory = (file: File, events: TransportEvents) => UploadTransport;
+export type TransportHints = {
+  /** Continue exactly this server-side upload (picked from the list of unfinished uploads) instead of looking one up. */
+  resumeUrl?: string;
+};
+
+export type TransportFactory = (file: File, events: TransportEvents, hints?: TransportHints) => UploadTransport;
 
 // ---------------------------------------------------------------------------
 // Engine
@@ -72,10 +77,17 @@ export type EngineOptions = {
   discard?: (videoId: string) => Promise<unknown>;
   /** Per-file size limit from the server (the server enforces it again). */
   maxBytes: number;
+  /** Base URL of the upload endpoint (only used to build the URL of an unfinished upload). */
+  endpoint?: string;
   maxConcurrent?: number;
   /** Minimum time between two notifications caused by progress events. */
   progressIntervalMs?: number;
   now?: () => number;
+};
+
+export type AddOptions = {
+  /** The (single) file continues the unfinished upload of this video. */
+  resumeVideoId?: string;
 };
 
 export type AddResult = {
@@ -88,6 +100,7 @@ type Entry = {
   file: File;
   meter: SpeedMeter;
   transport: UploadTransport | null;
+  resumeVideoId: string | null;
   /** All bytes are on the server; only the confirmation is missing. */
   needsConfirm: boolean;
   /** Set while a cancel is in progress, so late events from the transport are ignored. */
@@ -100,14 +113,14 @@ export class UploadEngine {
   private readonly entries = new Map<string, Entry>();
   private readonly listeners = new Set<() => void>();
   private snapshot: readonly UploadItem[] = EMPTY;
-  private options: Required<Pick<EngineOptions, 'maxConcurrent' | 'progressIntervalMs' | 'now'>> & EngineOptions;
+  private options: Required<Pick<EngineOptions, 'maxConcurrent' | 'progressIntervalMs' | 'now' | 'endpoint'>> & EngineOptions;
   private seq = 0;
   private progressTimer: ReturnType<typeof setTimeout> | null = null;
   private lastNotify = 0;
   private guarding = false;
 
   constructor(options: EngineOptions) {
-    this.options = { maxConcurrent: 3, progressIntervalMs: 150, now: Date.now, ...options };
+    this.options = { maxConcurrent: 3, progressIntervalMs: 150, now: Date.now, endpoint: '/api/upload', ...options };
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.onOnline);
     }
@@ -134,7 +147,7 @@ export class UploadEngine {
   // --- Commands -----------------------------------------------------------
 
   /** Validate and queue files. Invalid ones are reported back, never silently dropped. */
-  add(files: readonly File[]): AddResult {
+  add(files: readonly File[], options: AddOptions = {}): AddResult {
     const added: UploadItem[] = [];
     const rejected: AddResult['rejected'] = [];
 
@@ -161,7 +174,15 @@ export class UploadEngine {
         resumed: false,
         error: null,
       };
-      this.entries.set(id, { item, file, meter: new SpeedMeter(), transport: null, needsConfirm: false, discarded: false });
+      this.entries.set(id, {
+        item,
+        file,
+        meter: new SpeedMeter(),
+        transport: null,
+        resumeVideoId: options.resumeVideoId ?? null,
+        needsConfirm: false,
+        discarded: false,
+      });
       added.push(item);
     }
 
@@ -274,6 +295,7 @@ export class UploadEngine {
     entry.meter.reset();
     this.patch(entry, { status: 'uploading', error: null, bytesPerSecond: 0, etaSeconds: null });
     if (!entry.transport) {
+      const hints: TransportHints | undefined = entry.resumeVideoId ? { resumeUrl: `${this.options.endpoint}/${entry.resumeVideoId}` } : undefined;
       entry.transport = this.options.createTransport(entry.file, {
         onUrl: (url, resumed) => {
           if (entry.discarded) return;
@@ -301,7 +323,7 @@ export class UploadEngine {
           this.patch(entry, { status: 'error', error: failure, bytesPerSecond: 0, etaSeconds: null });
           this.pump();
         },
-      });
+      }, hints);
     }
     entry.transport.start();
   }
