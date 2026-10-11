@@ -182,6 +182,11 @@ enum ModerationActionType {
   REPORT_DISMISS
   MONETIZATION_APPROVE
   MONETIZATION_REJECT
+  CREATOR_WARN // staff warning sent to the creator of reported content
+  VERIFICATION_REJECT // verification request rejected (approval is CHANNEL_VERIFY)
+  TICKET_REPLY
+  TICKET_CLOSE
+  TICKET_REOPEN
 }
 
 enum MonetizationStatus {
@@ -735,6 +740,9 @@ model Report {
   @@unique([reporterId, channelId])
   @@index([status, createdAt(sort: Desc)])
   @@index([targetType, status])
+  @@index([videoId])
+  @@index([commentId])
+  @@index([channelId])
 }
 
 model ModerationAction {
@@ -762,6 +770,10 @@ model ModerationAction {
   @@index([createdAt(sort: Desc)])
   @@index([actorId, createdAt(sort: Desc)])
   @@index([channelId, createdAt(sort: Desc)])
+  @@index([videoId, createdAt(sort: Desc)])
+  @@index([commentId, createdAt(sort: Desc)])
+  @@index([targetUserId, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
 }
 
 /// Commenters blocked by a channel owner (the "spam writers" list).
