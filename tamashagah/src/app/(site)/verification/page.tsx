@@ -39,7 +39,6 @@ export default async function VerificationPage() {
       <PageHeader
         title="تیک تأیید کانال"
         description="نشانی از اینکه هویت کانال بررسی شده است."
-        className="mb-0"
         actions={<VerifiedBadge className="size-8" />}
       />
 

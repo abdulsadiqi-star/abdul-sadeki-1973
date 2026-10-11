@@ -32,7 +32,6 @@ export default function AppsPage() {
       <PageHeader
         title="برنامه‌ها و نصب"
         description="تماشاگاه یک برنامه‌ی وب نصب‌پذیر است؛ بدون فروشگاه و بدون دانلود جداگانه، مثل یک برنامه روی دستگاه شما می‌نشیند."
-        className="mb-0"
       />
 
       <section aria-labelledby="apps-install" className="space-y-4">

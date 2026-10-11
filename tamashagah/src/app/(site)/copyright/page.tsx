@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
 import { getCurrentUser } from '@/lib/auth/session';
+import { getFormatter } from '@/lib/format-server';
 import { VIDEO_ID_REGEX } from '@/lib/ids';
 import { CopyrightForm } from '@/features/support/components/copyright-form';
 
@@ -25,7 +26,7 @@ const steps = [
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
 export default async function CopyrightPage({ searchParams }: Props) {
-  const user = await getCurrentUser();
+  const [user, f] = await Promise.all([getCurrentUser(), getFormatter()]);
   const sp = await searchParams;
   const video = Array.isArray(sp.video) ? sp.video[0] : sp.video;
   const defaultVideo = video && VIDEO_ID_REGEX.test(video) ? video : undefined;
@@ -35,7 +36,6 @@ export default async function CopyrightPage({ searchParams }: Props) {
       <PageHeader
         title="حق تکثیر و شکایت"
         description="تماشاگاه به حقوق صاحبان آثار احترام می‌گذارد. اگر اثر شما بدون اجازه منتشر شده، از اینجا شکایت کنید."
-        className="mb-0"
       />
 
       <Alert variant="warning" role="note">
@@ -54,7 +54,7 @@ export default async function CopyrightPage({ searchParams }: Props) {
           {steps.map((step, index) => (
             <li key={step.title} className="flex gap-3">
               <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-foreground">
-                {index + 1}
+                {f.number(index + 1)}
               </span>
               <div className="min-w-0 leading-8">
                 <span className="font-semibold">{step.title}: </span>

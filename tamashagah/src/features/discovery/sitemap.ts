@@ -1,6 +1,5 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
-import type { MetadataRoute } from 'next';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
 import { publicVideoWhere } from '@/features/videos/visibility';
@@ -80,8 +79,10 @@ const categoryEntries = unstable_cache(
   { revalidate: 3600, tags: ['categories'] },
 );
 
+type SitemapEntry = { url: string; lastModified?: string; changeFrequency: 'daily' | 'weekly' | 'monthly' | 'yearly'; priority: number };
+
 /** The URLs of one sitemap file (see `getSitemapPlan` for the layout). */
-export async function getSitemapEntries(id: number): Promise<MetadataRoute.Sitemap> {
+export async function getSitemapEntries(id: number): Promise<SitemapEntry[]> {
   const origin = base();
   const plan = await getSitemapPlan();
   if (id === 0) {
@@ -109,6 +110,22 @@ export async function getSitemapEntries(id: number): Promise<MetadataRoute.Sitem
     }));
   }
   return [];
+}
+
+const xmlEscape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
+/** `<urlset>` XML of one file; `null` for an id outside the current layout (the route answers 404). */
+export async function renderSitemapFile(id: number): Promise<string | null> {
+  const ids = await getSitemapIds();
+  if (!ids.includes(id)) return null;
+  const entries = await getSitemapEntries(id);
+  const urls = entries
+    .map(
+      (e) =>
+        `  <url><loc>${xmlEscape(e.url)}</loc>${e.lastModified ? `<lastmod>${e.lastModified}</lastmod>` : ''}<changefreq>${e.changeFrequency}</changefreq><priority>${e.priority}</priority></url>`,
+    )
+    .join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
 /** `<sitemapindex>` XML pointing at every file. */

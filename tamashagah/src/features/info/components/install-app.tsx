@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useFormatter } from '@/components/providers/format-provider';
 import { cn } from '@/lib/utils';
 
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
@@ -54,6 +55,7 @@ const guides: { platform: Exclude<Platform, 'unknown'>; title: string; icon: typ
  * the manual steps for Android / iOS / desktop otherwise, and a note when the app is already running installed.
  */
 export function InstallApp() {
+  const f = useFormatter();
   const platform = useSyncExternalStore(noSubscription, detectPlatform, (): Platform => 'unknown');
   const standalone = useSyncExternalStore(subscribeStandalone, isStandalone, () => false);
   const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null);
@@ -116,9 +118,14 @@ export function InstallApp() {
               {title}
               {platform === id && <Badge variant="info">دستگاه شما</Badge>}
             </h3>
-            <ol className="list-decimal space-y-2 ps-5 text-sm leading-7 marker:text-muted-foreground">
-              {steps.map((step) => (
-                <li key={step}>{step}</li>
+            <ol className="space-y-2 text-sm leading-7">
+              {steps.map((step, index) => (
+                <li key={step} className="flex gap-2">
+                  <span aria-hidden="true" className="w-5 shrink-0 text-muted-foreground tabular-nums">
+                    {f.number(index + 1)}.
+                  </span>
+                  <span className="min-w-0">{step}</span>
+                </li>
               ))}
             </ol>
           </li>

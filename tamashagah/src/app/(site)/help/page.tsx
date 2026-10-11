@@ -48,7 +48,7 @@ export default async function HelpPage() {
           ),
         }}
       />
-      <PageHeader title="مرکز راهنما" description="پاسخ پرسش‌های پرتکرار را اینجا جستجو کنید؛ اگر پیدا نکردید، یک تیکت برای ما بفرستید." className="mb-0" />
+      <PageHeader title="مرکز راهنما" description="پاسخ پرسش‌های پرتکرار را اینجا جستجو کنید؛ اگر پیدا نکردید، یک تیکت برای ما بفرستید." />
 
       <FaqBrowser topics={topics} />
 
