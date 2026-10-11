@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Play } from 'lucide-react';
 import { ChannelAvatar } from '@/components/channel-avatar';
@@ -27,6 +28,43 @@ export function PosterPlaceholder({ className }: { className?: string }) {
 }
 
 /**
+ * Poster image that falls back to {@link PosterPlaceholder} when there is no URL or the file fails to load (404, storage
+ * error, corrupt image) — never a blank grey box. The ref callback also catches an image that had already failed before
+ * React hydrated (its `error` event is gone by then).
+ */
+export function PosterImage({
+  src,
+  priority = false,
+  width = 640,
+  height = 360,
+  className,
+}: {
+  src: string | null | undefined;
+  priority?: boolean;
+  width?: number;
+  height?: number;
+  className?: string;
+}) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  if (!src || failedSrc === src) return <PosterPlaceholder />;
+  return (
+    <img
+      ref={(img) => {
+        if (img && img.complete && img.naturalWidth === 0) setFailedSrc(src);
+      }}
+      src={src}
+      alt=""
+      width={width}
+      height={height}
+      loading={priority ? 'eager' : 'lazy'}
+      decoding="async"
+      onError={() => setFailedSrc(src)}
+      className={cn('size-full object-cover', className)}
+    />
+  );
+}
+
+/**
  * The standard video tile used by every grid and list in the product:
  * 16:9 poster with duration badge, 2-line title, channel row, views · age.
  */
@@ -42,19 +80,7 @@ export function VideoCard({ video, hideChannel = false, className, priority = fa
         aria-label={video.title}
         className="relative block aspect-video overflow-hidden rounded-xl bg-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
       >
-        {video.posterUrl ? (
-          <img
-            src={video.posterUrl}
-            alt=""
-            width={640}
-            height={360}
-            loading={priority ? 'eager' : 'lazy'}
-            decoding="async"
-            className="size-full object-cover transition-transform duration-300 group-hover/card:scale-[1.04]"
-          />
-        ) : (
-          <PosterPlaceholder />
-        )}
+        <PosterImage src={video.posterUrl} priority={priority} className="transition-transform duration-300 group-hover/card:scale-[1.04]" />
         {video.durationSeconds != null && (
           <span className="absolute end-2 bottom-2 rounded-md bg-black/75 px-1.5 py-0.5 text-xs font-medium text-white tabular-nums">
             {f.duration(video.durationSeconds)}
