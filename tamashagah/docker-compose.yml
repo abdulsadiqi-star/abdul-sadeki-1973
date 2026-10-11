@@ -8,25 +8,27 @@
 # MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, WEB_PORT.
 name: tamashagah
 
+# Settings shared by web and worker.
+#  * secrets and values that depend on the bundled services are wired here from .env;
+#  * non-secret defaults for the bundled stack live in docker/defaults.env;
+#  * anything you put in .env.docker (optional, git-ignored) overrides those defaults and adds more settings —
+#    e.g. a real SMTP provider, an external S3 service, upload limits. See docker/env.docker.example.
 x-app-env: &app-env
   APP_URL: ${APP_URL:-http://localhost:3000}
   DATABASE_URL: postgresql://tamashagah:${POSTGRES_PASSWORD:?run "pnpm setup:env" first}@postgres:5432/tamashagah
-  REDIS_URL: redis://redis:6379
   SESSION_SECRET: ${SESSION_SECRET:?run "pnpm setup:env" first}
-  STORAGE_DRIVER: s3
-  S3_ENDPOINT: http://objectstore:9000
-  S3_REGION: us-east-1
   S3_BUCKET: ${S3_BUCKET:-tamashagah}
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run "pnpm setup:env" first}
   S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run "pnpm setup:env" first}
-  S3_FORCE_PATH_STYLE: "true"
-  MAIL_TRANSPORT: smtp
-  SMTP_HOST: mailpit
-  SMTP_PORT: "1025"
   MAIL_FROM: ${MAIL_FROM:-تماشاگاه <no-reply@localhost>}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-true}
   TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+
+x-app-env-files: &app-env-files
+  - path: docker/defaults.env
+  - path: .env.docker
+    required: false
 
 services:
   postgres:
@@ -128,6 +130,7 @@ services:
       context: .
       target: web
     restart: unless-stopped
+    env_file: *app-env-files
     environment: *app-env
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -145,6 +148,7 @@ services:
       context: .
       target: worker
     restart: unless-stopped
+    env_file: *app-env-files
     environment:
       <<: *app-env
       SERVICE_NAME: worker
