@@ -31,7 +31,8 @@
     "seed:media": "tsx --env-file-if-exists=.env scripts/seed-media.ts",
     "postinstall": "prisma generate",
     "setup:env": "node scripts/init-env.mjs",
-    "test:components": "vitest run --project component"
+    "test:components": "vitest run --project component",
+    "audit:security": "node scripts/audit-security.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
