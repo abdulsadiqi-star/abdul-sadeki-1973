@@ -13,7 +13,7 @@
     "build": "prisma generate && next build",
     "build:worker": "esbuild ./worker/index.ts ./scripts/promote-user.ts ./scripts/check-storage.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --tsconfig=tsconfig.json --outdir=dist --outbase=. --out-extension:.js=.mjs",
     "start": "next start",
-    "start:worker": "node --enable-source-maps dist/worker/index.mjs",
+    "start:worker": "node --enable-source-maps --env-file-if-exists=.env dist/worker/index.mjs",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
