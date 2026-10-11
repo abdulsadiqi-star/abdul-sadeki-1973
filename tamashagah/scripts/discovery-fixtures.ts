@@ -64,7 +64,7 @@ function hslToHex(h: number, s: number, l: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Posters
+// Posters and channel images
 // ---------------------------------------------------------------------------
 
 function posterSvg(width: number, height: number, rng: Rng): string {
@@ -115,11 +115,13 @@ export async function renderBanner(seed: string, size: { width: number; height: 
   return sharp(Buffer.from(svg)).webp({ quality: 78 }).toBuffer();
 }
 
+const safeToken = () => randomToken(6).replace(/[^A-Za-z0-9]/g, 'x');
+
 /** Store avatar/banner images for a channel and return their keys for `Channel.avatarKey` / `bannerKey`. */
 export async function storeChannelImages(channelId: string, ownerId: string, seed: string): Promise<{ avatarKey: string; bannerKey: string }> {
   const storage = getStorage();
-  const avatarKey = keys.avatar(ownerId, randomToken(6).replace(/[^A-Za-z0-9]/g, 'x'));
-  const bannerKey = keys.banner(channelId, randomToken(6).replace(/[^A-Za-z0-9]/g, 'x'));
+  const avatarKey = keys.avatar(ownerId, safeToken());
+  const bannerKey = keys.banner(channelId, safeToken());
   await storage.put(avatarKey, await renderAvatar(seed), { contentType: 'image/webp' });
   await storage.put(bannerKey, await renderBanner(seed), { contentType: 'image/webp' });
   return { avatarKey, bannerKey };
@@ -129,7 +131,7 @@ export async function storeChannelImages(channelId: string, ownerId: string, see
 export async function storePoster(videoId: string, jpeg: Buffer): Promise<string> {
   const storage = getStorage();
   await storage.deletePrefix(`${keys.videoPrefix(videoId)}thumbs/`); // keep re-runs idempotent (no orphaned posters)
-  const key = keys.poster(videoId, randomToken(6).replace(/[^A-Za-z0-9]/g, 'x'));
+  const key = keys.poster(videoId, safeToken());
   await storage.put(key, jpeg, { contentType: 'image/jpeg' });
   return key;
 }
@@ -139,6 +141,17 @@ export async function storePoster(videoId: string, jpeg: Buffer): Promise<string
 // ---------------------------------------------------------------------------
 
 export type HlsFixture = { dir: string; files: string[] };
+
+/**
+ * `h264`: MPEG-TS + H.264/AAC (what the real pipeline produces; plays in every normal browser).
+ * `vp9`: fragmented-MP4 + VP9/Opus — only for headless Chromium builds without proprietary codecs (the sandbox's
+ * Playwright Chromium cannot decode H.264), so playback can still be verified end to end.
+ */
+export type HlsCodec = 'h264' | 'vp9';
+
+export function defaultHlsCodec(): HlsCodec {
+  return process.env.SEED_HLS_CODEC === 'vp9' ? 'vp9' : 'h264';
+}
 
 const fixtureCache = new Map<string, Promise<HlsFixture>>();
 
@@ -154,10 +167,12 @@ async function listFiles(root: string, rel = ''): Promise<string[]> {
 
 /**
  * Render a portrait (360×640) HLS clip with audio using ffmpeg `lavfi`: master.m3u8 + `640p/index.m3u8` + segments.
- * Cached per seed for the lifetime of the process (a fixture is copied under many video ids).
+ * Cached per seed/codec for the lifetime of the process (a fixture is copied under many video ids).
  */
-export function renderShortHls(seed: string, seconds = 5): Promise<HlsFixture> {
-  const cacheKey = `${seed}:${seconds}`;
+export function renderShortHls(seed: string, opts: { seconds?: number; codec?: HlsCodec } = {}): Promise<HlsFixture> {
+  const seconds = opts.seconds ?? 5;
+  const codec = opts.codec ?? defaultHlsCodec();
+  const cacheKey = `${seed}:${seconds}:${codec}`;
   let promise = fixtureCache.get(cacheKey);
   if (!promise) {
     promise = (async () => {
@@ -165,15 +180,25 @@ export function renderShortHls(seed: string, seconds = 5): Promise<HlsFixture> {
       const color = () => hslToHex(Math.floor(rng() * 360), 70, 45).replace('#', '0x');
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-hls-'));
       await fs.mkdir(path.join(dir, '640p'), { recursive: true });
+      const inputs = [
+        '-f', 'lavfi', '-i', `gradients=s=360x640:r=24:d=${seconds}:speed=0.04:c0=${color()}:c1=${color()}:c2=${color()}:nb_colors=3:seed=${Math.floor(rng() * 1000)}`,
+        '-f', 'lavfi', '-i', `sine=frequency=${180 + Math.floor(rng() * 200)}:duration=${seconds}:sample_rate=48000`,
+      ];
+      const encode =
+        codec === 'vp9'
+          ? ['-c:v', 'libvpx-vp9', '-b:v', '300k', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-g', '48', '-keyint_min', '48', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-b:a', '48k', '-ac', '1']
+          : ['-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-g', '48', '-keyint_min', '48', '-sc_threshold', '0', '-b:v', '420k', '-maxrate', '480k', '-bufsize', '900k', '-c:a', 'aac', '-b:a', '48k', '-ac', '1'];
+      const segments =
+        codec === 'vp9'
+          ? ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', path.join(dir, '%v/seg_%05d.m4s')]
+          : ['-hls_segment_filename', path.join(dir, '%v/seg_%05d.ts')];
       await run(env.FFMPEG_PATH, [
         '-v', 'error', '-y',
-        '-f', 'lavfi', '-i', `gradients=s=360x640:r=24:d=${seconds}:speed=0.04:c0=${color()}:c1=${color()}:c2=${color()}:nb_colors=3:seed=${Math.floor(rng() * 1000)}`,
-        '-f', 'lavfi', '-i', `sine=frequency=${180 + Math.floor(rng() * 200)}:duration=${seconds}:sample_rate=44100`,
-        '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p',
-        '-g', '48', '-keyint_min', '48', '-sc_threshold', '0', '-b:v', '420k', '-maxrate', '480k', '-bufsize', '900k',
-        '-c:a', 'aac', '-b:a', '48k', '-ac', '1', '-shortest',
+        ...inputs,
+        ...encode,
+        '-shortest',
         '-f', 'hls', '-hls_time', '2', '-hls_playlist_type', 'vod',
-        '-hls_segment_filename', path.join(dir, '%v/seg_%05d.ts'),
+        ...segments,
         '-master_pl_name', 'master.m3u8',
         '-var_stream_map', 'v:0,a:0,name:640p',
         path.join(dir, '%v/index.m3u8'),
@@ -188,6 +213,7 @@ export function renderShortHls(seed: string, seconds = 5): Promise<HlsFixture> {
 /** Copy an HLS fixture under `videos/<id>/hls/`; returns the master playlist key for `Video.hlsMasterKey`. */
 export async function storeHls(videoId: string, fixture: HlsFixture): Promise<string> {
   const storage = getStorage();
+  await storage.deletePrefix(`${keys.videoPrefix(videoId)}hls/`);
   for (const rel of fixture.files) {
     const key = `${keys.videoPrefix(videoId)}hls/${rel.split(path.sep).join('/')}`;
     await storage.putFile(key, path.join(fixture.dir, rel), { contentType: contentTypeForKey(key) });
@@ -220,6 +246,7 @@ export type MediaVideoInput = {
   /** Real playable HLS (shorts need it; regular videos usually do not for discovery pages). */
   withHls?: boolean;
   hlsSeed?: string;
+  hlsCodec?: HlsCodec;
   /** Lifecycle shortcut for hidden-state fixtures. */
   state?: 'public' | 'unlisted' | 'private' | 'draft' | 'takedown';
   /** Point `hlsMasterKey` at a playlist that does not exist (broken short). */
@@ -239,7 +266,7 @@ export async function createMediaVideo(input: MediaVideoInput) {
   const posterKey = await storePoster(id, poster);
   let hlsMasterKey: string | null = null;
   if (input.brokenHls) hlsMasterKey = keys.hlsMaster(id);
-  else if (input.withHls ?? kind === 'SHORT') hlsMasterKey = await storeHls(id, await renderShortHls(input.hlsSeed ?? id));
+  else if (input.withHls ?? kind === 'SHORT') hlsMasterKey = await storeHls(id, await renderShortHls(input.hlsSeed ?? id, { codec: input.hlsCodec }));
 
   const data: Prisma.VideoUncheckedCreateInput = {
     id,
