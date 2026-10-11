@@ -11,6 +11,7 @@
  *  4. Raw SQL built with string concatenation / template interpolation that is not Prisma.sql.
  *  5. Secrets accidentally committed (private keys, obvious tokens) and .env files tracked by git.
  *
+ * Comments are ignored; a Server Action also counts as guarded when it calls a local helper (one level) that calls a guard.
  * Extend the allow-lists below deliberately — each entry is a conscious "this is public on purpose" decision.
  */
 import { execFileSync } from 'node:child_process';
@@ -39,6 +40,12 @@ const PUBLIC_ROUTES = [
   ['robots', 'SEO'],
   ['manifest', 'PWA'],
 ];
+
+/**
+ * Route-handler factories. A route file that calls one of these gets `apiHandler` (Origin/CSRF + error envelope) and an auth
+ * guard from the factory; the audit verifies the factory source really contains both.
+ */
+const ROUTE_FACTORIES = { imageRoutes: 'src/features/settings/image-routes.ts' };
 
 const findings = [];
 const add = (severity, file, line, msg) => findings.push({ severity, file: path.relative(root, file), line, msg });
@@ -70,15 +77,46 @@ function exportedFunctions(text) {
   return out;
 }
 
+/** Blank out comments but keep every newline, so reported line numbers stay correct. */
+function stripComments(source) {
+  const blank = (m) => m.replace(/[^\n]/g, ' ');
+  return source.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[\s;{}(,])\/\/[^\n]*/g, (m, lead) => lead + blank(m.slice(lead.length)));
+}
+
+/** Non-exported functions of a file (name → body until the next top-level declaration). */
+function localFunctions(text) {
+  const out = new Map();
+  // `function name(` and `const name = async (...) =>` helpers
+  const re = /\n(?:(?:async\s+)?function\s+(\w+)\s*\(|const\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>)/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const start = m.index;
+    const next = text.slice(start + 1).search(/\n(?:export\s|(?:async\s+)?function\s|const\s|type\s|interface\s)/);
+    out.set(m[1] ?? m[2], text.slice(start, next === -1 ? text.length : start + 1 + next));
+  }
+  return out;
+}
+
+const factoryOk = Object.fromEntries(
+  Object.entries(ROUTE_FACTORIES).map(([name, rel]) => {
+    const f = path.join(root, rel);
+    const src = fs.existsSync(f) ? stripComments(fs.readFileSync(f, 'utf8')) : '';
+    return [name, /apiHandler\s*[<(]/.test(src) && GUARDS.test(src)];
+  }),
+);
+
 for (const file of walk(SRC)) {
-  const text = fs.readFileSync(file, 'utf8');
+  const raw = fs.readFileSync(file, 'utf8');
+  const text = stripComments(raw);
   const rel = path.relative(root, file);
 
   // 1. Server Actions ---------------------------------------------------------------------------
   if (/^\s*['"]use server['"]/m.test(text.slice(0, 400))) {
+    const helpers = localFunctions(text);
+    const guardedViaHelper = (body) => [...helpers].some(([name, hb]) => new RegExp(`\\b${name}\\s*\\(`).test(body) && GUARDS.test(hb));
     for (const fn of exportedFunctions(text)) {
       if (PUBLIC_ACTIONS.has(fn.name)) continue;
-      if (!GUARDS.test(fn.body) && !/\bviewer\(\)|\bactor\(\)|\bctx\(\)/.test(fn.body)) {
+      if (!GUARDS.test(fn.body) && !guardedViaHelper(fn.body)) {
         add('HIGH', file, lineOf(text, fn.index), `Server Action ${fn.name}() has no auth guard (add requireUser()/requireRole()… or allow-list it deliberately)`);
       }
       if (!/\brunAction\s*\(/.test(fn.body)) {
@@ -91,14 +129,16 @@ for (const file of walk(SRC)) {
   if (/\/route\.ts$/.test(rel)) {
     const publicReason = PUBLIC_ROUTES.find(([frag]) => rel.includes(frag))?.[1];
     const methods = [...text.matchAll(/export\s+(?:const|async function|function)\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g)];
+    const viaFactory = Object.keys(ROUTE_FACTORIES).filter((name) => new RegExp(`\\b${name}\\s*\\(`).test(text));
+    const factoryProtected = viaFactory.length > 0 && viaFactory.every((name) => factoryOk[name]);
     for (const m of methods) {
       const method = m[1];
       const rest = text.slice(m.index, m.index + 400);
-      const wrapped = /apiHandler\s*[<(]/.test(rest);
+      const wrapped = factoryProtected || /apiHandler\s*[<(]/.test(rest);
       if (!wrapped && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && !publicReason) {
         add('HIGH', file, lineOf(text, m.index), `${method} handler is not wrapped by apiHandler() (no Origin/CSRF check)`);
       }
-      if (!publicReason && !GUARDS.test(text)) {
+      if (!publicReason && !factoryProtected && !GUARDS.test(text)) {
         add('HIGH', file, lineOf(text, m.index), `${method} handler has no auth guard and is not on the PUBLIC_ROUTES allow-list`);
       }
     }
@@ -106,14 +146,15 @@ for (const file of walk(SRC)) {
 
   // 3. Dangerous constructs --------------------------------------------------------------------
   const isTest = /(^|\/)tests?\//.test(rel);
-  for (const [re, sev, msg, allow] of [
-    [/dangerouslySetInnerHTML/g, 'HIGH', 'dangerouslySetInnerHTML (XSS risk) — must be sanitized/serialized JSON-LD only', /JSON\.stringify/],
+  for (const [re, sev, msg, allow, allowFile] of [
+    [/dangerouslySetInnerHTML/g, 'HIGH', 'dangerouslySetInnerHTML (XSS risk) — only serialized JSON-LD with "<" escaped', /__html:\s*jsonLdString\(/, /JSON\.stringify[\s\S]*u003c/],
     // Bare `eval(` only — member calls such as `redis.eval(` are the Redis EVAL command, not JavaScript eval.
     [/(?<![.\w$])eval\s*\(|new\s+Function\s*\(/g, 'HIGH', 'eval / new Function'],
     [/\$(queryRawUnsafe|executeRawUnsafe)\b/g, isTest ? null : 'HIGH', 'Unsafe raw SQL API outside tests'],
     [/from\s+['"](node:)?child_process['"]/g, /^(worker|scripts|tests|prisma)\//.test(rel) ? null : 'HIGH', 'child_process outside worker/scripts'],
   ]) {
     if (!sev) continue;
+    if (allowFile && allowFile.test(text)) continue;
     for (const m of text.matchAll(re)) {
       const window = text.slice(Math.max(0, m.index - 200), m.index + 300);
       if (allow && allow.test(window)) continue;
@@ -131,8 +172,8 @@ for (const file of walk(SRC)) {
   for (const m of text.matchAll(/\$queryRaw\s*\(\s*[`'"]|\$executeRaw\s*\(\s*[`'"]/g)) {
     add('HIGH', file, lineOf(text, m.index), 'Raw SQL passed as a plain string — use the tagged template ($queryRaw`...`) or Prisma.sql');
   }
-  for (const m of text.matchAll(/Prisma\.raw\(|sql\.raw\(/g)) {
-    add('MEDIUM', file, lineOf(text, m.index), 'Prisma.raw()/sql.raw() — verify the argument is a constant, never user input');
+  for (const m of text.matchAll(/(?:Prisma|sql)\.raw\((?![A-Z][A-Z0-9_]*\))/g)) {
+    add('MEDIUM', file, lineOf(text, m.index), 'Prisma.raw()/sql.raw() with a non-constant argument — verify it is never user input (UPPER_CASE module constants are accepted)');
   }
 }
 
