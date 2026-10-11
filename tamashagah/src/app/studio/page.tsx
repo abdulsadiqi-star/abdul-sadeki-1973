@@ -1,7 +1,12 @@
-import { Clapperboard, MailWarning } from 'lucide-react';
+import { Suspense } from 'react';
+import Link from 'next/link';
+import { Clapperboard, MailWarning, Upload } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { CreateChannelForm } from '@/components/channel/create-channel-form';
-import { ComingSoon } from '@/components/coming-soon';
+import { PageHeader } from '@/components/page-header';
+import { Dashboard } from '@/components/studio/dashboard';
+import { DashboardSkeleton } from '@/components/studio/dashboard-skeleton';
 import { requirePageUser } from '@/lib/auth/guards';
 
 export const metadata = { title: 'داشبورد' };
@@ -37,5 +42,22 @@ export default async function StudioDashboardPage() {
     );
   }
 
-  return <ComingSoon title="داشبورد استودیو" hint="آمار کلی، آخرین ویدیوها و دیدگاه‌های اخیر اینجا نمایش داده می‌شود." />;
+  return (
+    <>
+      <PageHeader
+        title="داشبورد"
+        description={`خوش آمدید! نگاهی به وضعیت کانال «${user.channel.name}»`}
+        actions={
+          <Button asChild shape="pill">
+            <Link href="/studio/upload">
+              <Upload /> بارگذاری ویدیو
+            </Link>
+          </Button>
+        }
+      />
+      <Suspense fallback={<DashboardSkeleton />}>
+        <Dashboard userId={user.id} channel={{ id: user.channel.id, name: user.channel.name }} />
+      </Suspense>
+    </>
+  );
 }
