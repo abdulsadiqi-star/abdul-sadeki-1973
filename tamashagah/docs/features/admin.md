@@ -75,6 +75,8 @@ One additive migration, `20261011134837_admin_audit_types_and_indexes`: enum val
   labelled as such.
 - The public media route caches a video's visibility for 10 s, so a taken-down video's files can stay reachable for up to
   10 s; pages and feeds are cut off at once (`revalidatePath`).
-- Tests: `tests/unit/admin-*.test.ts`, `tests/integration/admin-*.test.ts` (real PostgreSQL), `tests/e2e/admin.spec.ts`
-  (DB fixtures via `tests/e2e/support/admin-fixtures-cli.ts`, because Playwright cannot import the Prisma client).
+- Tests: `tests/unit/admin-*.test.ts`, `tests/integration/admin-*.test.ts` (real PostgreSQL; `admin-atomicity` installs a
+  trigger that fails every audit insert and proves each mutation then rolls back as a whole, sessions included),
+  `tests/e2e/admin.spec.ts` (DB fixtures via `tests/e2e/support/admin-fixtures-cli.ts`, because Playwright cannot import
+  the Prisma client; run it with `E2E_BASE_URL=http://localhost:<port> pnpm exec playwright test tests/e2e/admin.spec.ts`).
   Demo backlog for screenshots: `pnpm exec tsx --env-file=.env tests/e2e/seed-admin-demo.ts [--force]`.
