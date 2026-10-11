@@ -23,6 +23,12 @@ const fixtureFile = (name: string, seconds?: number) => dbCommand<{ file: string
 const createCreator = (label: string) => dbCommand<{ email: string; handle: string }>('creator', label, E2E_PASSWORD);
 const cleanup = (...handles: string[]) => dbCommand('cleanup', ...handles);
 
+/** Open the upload page and wait until React has attached its handlers (a file chosen before that is ignored). */
+async function openUploadPage(page: Page) {
+  await page.goto('/studio/upload');
+  await page.waitForLoadState('networkidle');
+}
+
 const cardFor = (page: Page, name: string): Locator => page.getByTestId('upload-card').filter({ hasText: name });
 const videoIdOf = async (card: Locator) => {
   const href = await card.getByRole('link', { name: 'ویرایش کامل' }).getAttribute('href');
@@ -45,7 +51,7 @@ test.describe('media: upload, process, edit, delete', () => {
     const fileName = path.basename(file);
 
     // --- upload --------------------------------------------------------------------------------------------------
-    await page.goto('/studio/upload');
+    await openUploadPage(page);
     await expect(page.getByRole('heading', { name: 'ویدیوهای خود را اینجا بکشید و رها کنید' })).toBeVisible();
     await page.getByTestId('upload-input').setInputFiles(file);
     const card = cardFor(page, fileName);
@@ -95,9 +101,11 @@ test.describe('media: upload, process, edit, delete', () => {
     await page.getByRole('button', { name: 'ذخیره‌ی تغییرات' }).click();
     await expect(page.getByText('تغییرات ذخیره شد.').first()).toBeVisible();
 
-    // a different generated frame as the poster
-    await page.getByTestId('thumbnail-option').nth(1).click();
+    // a different generated frame as the poster (the middle candidate is the default, so pick the first)
+    await expect(page.getByTestId('thumbnail-option').nth(1)).toHaveAttribute('aria-checked', 'true');
+    await page.getByTestId('thumbnail-option').nth(0).click();
     await expect(page.getByText('تصویر بندانگشتی تغییر کرد.').first()).toBeVisible();
+    await expect(page.getByTestId('thumbnail-option').nth(0)).toHaveAttribute('aria-checked', 'true');
 
     // subtitles
     await page.getByTestId('subtitle-input').setInputFiles({
@@ -125,7 +133,7 @@ test.describe('media: upload, process, edit, delete', () => {
     const fileName = path.basename(file);
     page.on('dialog', (dialog) => void dialog.accept()); // "leave this page?" while an upload runs
 
-    await page.goto('/studio/upload');
+    await openUploadPage(page);
     await throttleUpload(page, 1.5 * 1024 * 1024);
     await page.getByTestId('upload-input').setInputFiles(file);
     const card = cardFor(page, fileName);
@@ -151,13 +159,15 @@ test.describe('media: upload, process, edit, delete', () => {
     // reload in the middle of the upload: the server kept what it got
     await expect.poll(() => percentOf(card), { timeout: 60_000 }).toBeGreaterThan(30);
     await page.reload();
+    await page.waitForLoadState('networkidle');
     await expect(page.getByTestId('upload-card')).toHaveCount(0);
     const pending = page.getByTestId('pending-upload');
     await expect(pending).toHaveCount(1);
     await expect(pending).toContainText(fileName);
 
     // picking the same file again continues from the server's offset
-    await page.getByTestId('pending-input').setInputFiles(file);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), pending.getByRole('button', { name: /ادامه با انتخاب فایل/ }).click()]);
+    await chooser.setFiles(file);
     const resumed = cardFor(page, fileName);
     await expect(resumed).toContainText('ادامه‌ی بارگذاری قبلی');
     await expect.poll(() => percentOf(resumed), { timeout: 30_000 }).toBeGreaterThan(20);
@@ -177,8 +187,13 @@ test.describe('media: upload, process, edit, delete', () => {
     await loginViaUi(otherPage, intruder.email);
 
     // pages
-    const edit = await otherPage.goto(`/studio/videos/${ownerVideo.id}/edit`);
-    expect(edit?.status()).toBe(404);
+    // (the page streams behind its loading skeleton, so the "not found" shows as content; it is the very same page
+    // as for an id that does not exist at all)
+    for (const id of [ownerVideo.id, 'DoesNotExist']) {
+      await otherPage.goto(`/studio/videos/${id}/edit`);
+      await expect(otherPage.getByRole('heading', { name: /پیدا نشد/ })).toBeVisible();
+      await expect(otherPage.getByLabel('عنوان ویدیو')).toHaveCount(0);
+    }
     // the upload endpoint and the status endpoint answer exactly like for an id that does not exist
     const head = await otherPage.request.fetch(`/api/upload/${ownerVideo.id}`, { method: 'HEAD', headers: { 'Tus-Resumable': '1.0.0' } });
     expect(head.status()).toBe(404);
