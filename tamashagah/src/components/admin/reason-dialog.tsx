@@ -113,13 +113,13 @@ function ReasonForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-4" noValidate>
+    <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4" noValidate>
       <DialogHeader>
         <DialogTitle>{title}</DialogTitle>
         {description ? <DialogDescription asChild><div>{description}</div></DialogDescription> : <DialogDescription className="sr-only">{title}</DialogDescription>}
       </DialogHeader>
 
-      <div className="grid gap-2">
+      <div className="grid grid-cols-1 gap-2">
         <Label htmlFor={`${id}-reason`}>
           {reasonLabel}
           {!required && <span className="text-xs font-normal text-muted-foreground">(اختیاری)</span>}

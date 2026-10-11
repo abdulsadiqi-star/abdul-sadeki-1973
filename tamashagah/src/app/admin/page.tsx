@@ -65,7 +65,7 @@ export default async function AdminOverviewPage() {
         actions={<RoleBadge role={user.role} />}
       />
 
-      <section aria-label="موارد در انتظار بررسی" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section aria-label="موارد در انتظار بررسی" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AttentionCard
           href="/admin/reports"
           icon={Flag}
@@ -121,7 +121,7 @@ export default async function AdminOverviewPage() {
         />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Section
           id="recent"
           title="آخرین اقدام‌ها"
@@ -143,7 +143,7 @@ export default async function AdminOverviewPage() {
         </Section>
 
         <Section id="shortcuts" title="میان‌برها">
-          <ul className="grid gap-1.5">
+          <ul className="grid grid-cols-1 gap-1.5">
             {(
               [
                 { href: '/admin/reports?status=OPEN&sort=oldest', label: 'گزارش‌های باز، قدیمی‌ترین ابتدا', icon: Flag },

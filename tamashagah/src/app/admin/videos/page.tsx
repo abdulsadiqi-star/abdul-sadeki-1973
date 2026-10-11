@@ -50,7 +50,7 @@ export default async function AdminVideosPage({ searchParams }: { searchParams: 
         values={values}
         fields={[
           { kind: 'search', name: 'q', label: 'جستجوی عنوان یا شناسه', placeholder: 'عنوان ویدیو یا شناسه‌ی ۱۱ نویسه‌ای' },
-          { kind: 'search', name: 'channel', label: 'کانال', placeholder: 'نام یا شناسه‌ی کانال', className: 'basis-44 flex-none' },
+          { kind: 'search', name: 'channel', label: 'کانال', placeholder: 'نام یا شناسه‌ی کانال', className: 'basis-44 sm:flex-none' },
           {
             kind: 'select',
             name: 'processing',

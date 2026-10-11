@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic';
 
 function VideoPreview({ target, f }: { target: Extract<NonNullable<ReportDetail['target']>, { type: 'VIDEO' }>; f: Formatter }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-[14rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-[14rem_minmax(0,1fr)]">
       <Link href={`/watch/${target.id}`} target="_blank" rel="noopener" className="group relative block aspect-video overflow-hidden rounded-xl bg-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring">
         {target.posterUrl ? <img src={target.posterUrl} alt="" className="size-full object-cover transition-transform group-hover:scale-[1.03]" /> : <PosterPlaceholder />}
         {target.durationSeconds != null && (
@@ -155,12 +155,12 @@ function ChannelPreview({ target, f }: { target: Extract<NonNullable<ReportDetai
   return (
     <div className="flex flex-wrap items-start gap-4">
       <ChannelAvatar name={target.name} src={target.avatarUrl} size="lg" />
-      <div className="min-w-0 flex-1 basis-64 space-y-2">
+      <div className="min-w-0 flex-1 basis-52 space-y-2">
         <h3 className="flex items-center gap-1.5 text-lg font-bold" dir="auto">
           <span className="truncate">{target.name}</span>
           {target.isVerified && <VerifiedBadge />}
         </h3>
-        <p className="ltr-isolate text-sm text-muted-foreground">@{target.handle}</p>
+        <p className="ltr-isolate w-fit max-w-full truncate text-sm text-muted-foreground">@{target.handle}</p>
         <div className="flex flex-wrap gap-1.5">
           {target.suspended ? <Badge variant="destructive">تعلیق‌شده</Badge> : <Badge variant="success">فعال</Badge>}
           {target.isVerified && <Badge variant="info">تیک تأیید</Badge>}
@@ -238,7 +238,7 @@ export default async function ReportDetailPage({ params }: { params: Promise<{ i
         actions={<ReportStatusBadge status={report.status} />}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <Section id="target" title="مورد گزارش‌شده" className="lg:col-start-1">
           {!target ? (
             <p className="text-sm text-muted-foreground">این مورد دیگر وجود ندارد (احتمالاً حذف شده است).</p>

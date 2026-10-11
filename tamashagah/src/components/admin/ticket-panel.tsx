@@ -79,8 +79,8 @@ export function TicketPanel({ ticketId, number, status, denial }: { ticketId: st
           </Button>
         </div>
       ) : (
-        <form onSubmit={onReply} className="grid gap-3" noValidate>
-          <div className="grid gap-2">
+        <form onSubmit={onReply} className="grid grid-cols-1 gap-3" noValidate>
+          <div className="grid grid-cols-1 gap-2">
             <Label htmlFor={`${id}-body`}>پاسخ شما به تیکت شماره‌ی {f.number(number)}</Label>
             <Textarea
               id={`${id}-body`}

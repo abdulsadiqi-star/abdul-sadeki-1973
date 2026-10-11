@@ -61,7 +61,7 @@ export default async function AdminChannelPage({ params }: { params: Promise<{ i
           <StatCard label="گزارش باز" value={f.number(channel.reports.open)} icon={Flag} hint={`${f.number(channel.reports.total)} گزارش در کل`} />
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Section id="status" title="وضعیت و اقدام‌ها">
             <div className="mb-4 flex items-start gap-4">
               <ChannelAvatar name={channel.name} src={channel.avatarUrl} size="lg" />

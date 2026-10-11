@@ -85,7 +85,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                     {u.status === 'SUSPENDED' && <UserStatusBadge status={u.status} />}
                     {!u.emailVerified && <Badge variant="muted">ایمیل تأیید نشده</Badge>}
                   </p>
-                  <p className="ltr-isolate truncate text-xs text-muted-foreground">{u.email}</p>
+                  <p className="ltr-isolate w-fit max-w-full truncate text-xs text-muted-foreground">{u.email}</p>
                 </div>
                 <div className="flex min-w-44 flex-col gap-1 text-xs text-muted-foreground">
                   {u.channel ? (

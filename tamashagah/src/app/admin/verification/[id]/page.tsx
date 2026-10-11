@@ -41,7 +41,7 @@ export default async function VerificationDetailPage({ params }: { params: Promi
         actions={<RequestStatusBadge kind="verification" status={request.status} />}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
           <Section id="message" title="پیام سازنده">
             <UserText>{request.message}</UserText>

@@ -35,7 +35,7 @@ export default async function AdminTicketPage({ params }: { params: Promise<{ id
       </Button>
       <PageHeader title={`تیکت شماره‌ی ${f.number(ticket.number)}`} description={ticket.subject} actions={<TicketStatusBadge status={ticket.status} />} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-6">
           <Section id="thread" title="گفت‌وگو" description={`${f.count(ticket.messages.length, 'پیام')}`}>
             <ol className="space-y-3" aria-label="پیام‌های تیکت">

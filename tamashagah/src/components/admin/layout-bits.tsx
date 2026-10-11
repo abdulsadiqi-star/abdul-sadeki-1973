@@ -107,7 +107,7 @@ export function ChannelLink({
           <span className="truncate">{name}</span>
           {isVerified && <VerifiedBadge />}
         </Link>
-        {handle && <span className="ltr-isolate block truncate text-xs text-muted-foreground">@{handle}</span>}
+        {handle && <span className="ltr-isolate block w-fit max-w-full truncate text-xs text-muted-foreground">@{handle}</span>}
       </span>
     </span>
   );

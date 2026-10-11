@@ -17,6 +17,15 @@ import { cn } from '@/lib/utils';
 export const metadata = { title: 'درخواست درآمدزایی' };
 export const dynamic = 'force-dynamic';
 
+function MetOrNot({ ok }: { ok: boolean }) {
+  return (
+    <Badge variant={ok ? 'success' : 'warning'}>
+      {ok ? <Check /> : <X />}
+      {ok ? 'رسیده' : 'نرسیده'}
+    </Badge>
+  );
+}
+
 export default async function MonetizationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await requireStaffPage('ADMIN');
   const { id } = await params;
@@ -53,11 +62,12 @@ export default async function MonetizationDetailPage({ params }: { params: Promi
       </Button>
       <PageHeader title={`درخواست درآمدزایی «${app.channel.name}»`} description={app.submittedAt ? `ثبت‌شده ${f.dateTime(app.submittedAt)}` : undefined} actions={<RequestStatusBadge kind="monetization" status={app.status} />} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
           <Section id="stats" title="آمار کانال" description="آمار زنده از جدول‌های سامانه خوانده می‌شود؛ ستون «هنگام ثبت» همان است که سازنده با درخواستش ثبت کرده است.">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[30rem] text-sm">
+            {/* Wide screens: a table. Phones: one compact block per metric (five columns do not fit and would hide the verdict). */}
+            <div className="hidden sm:block">
+              <table className="w-full text-sm">
                 <caption className="sr-only">مقایسه‌ی آمار هنگام ثبت و آمار زنده با حداقل‌های برنامه</caption>
                 <thead>
                   <tr className="border-b text-start text-xs text-muted-foreground">
@@ -69,29 +79,50 @@ export default async function MonetizationDetailPage({ params }: { params: Promi
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
-                    const ok = r.live >= r.required;
-                    return (
-                      <tr key={r.label} className="border-b last:border-0">
-                        <th scope="row" className="py-3 pe-3 text-start font-medium">
-                          {r.label}
-                          {r.note && <span className="block text-xs font-normal text-muted-foreground">{r.note}</span>}
-                        </th>
-                        <td className="px-3 py-3 tabular-nums">{r.snapshot === null ? '—' : r.format(r.snapshot)}</td>
-                        <td className="px-3 py-3 font-semibold tabular-nums">{r.format(r.live)}</td>
-                        <td className="px-3 py-3 tabular-nums text-muted-foreground">{r.format(r.required)}</td>
-                        <td className="ps-3 py-3">
-                          <Badge variant={ok ? 'success' : 'warning'}>
-                            {ok ? <Check /> : <X />}
-                            {ok ? 'رسیده' : 'نرسیده'}
-                          </Badge>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {rows.map((r) => (
+                    <tr key={r.label} className="border-b last:border-0">
+                      <th scope="row" className="py-3 pe-3 text-start font-medium">
+                        {r.label}
+                        {r.note && <span className="block text-xs font-normal text-muted-foreground">{r.note}</span>}
+                      </th>
+                      <td className="px-3 py-3 tabular-nums">{r.snapshot === null ? '—' : r.format(r.snapshot)}</td>
+                      <td className="px-3 py-3 font-semibold tabular-nums">{r.format(r.live)}</td>
+                      <td className="px-3 py-3 tabular-nums text-muted-foreground">{r.format(r.required)}</td>
+                      <td className="ps-3 py-3">
+                        <MetOrNot ok={r.live >= r.required} />
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
+            <ul aria-label="مقایسه‌ی آمار هنگام ثبت و آمار زنده با حداقل‌های برنامه" className="divide-y rounded-lg border sm:hidden">
+              {rows.map((r) => (
+                <li key={r.label} className="p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-medium">
+                      {r.label}
+                      {r.note && <span className="block text-xs font-normal text-muted-foreground">{r.note}</span>}
+                    </p>
+                    <MetOrNot ok={r.live >= r.required} />
+                  </div>
+                  <dl className="mt-2.5 grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <dt className="text-muted-foreground">هنگام ثبت</dt>
+                      <dd className="mt-0.5 text-sm tabular-nums">{r.snapshot === null ? '—' : r.format(r.snapshot)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">اکنون</dt>
+                      <dd className="mt-0.5 text-sm font-semibold tabular-nums">{r.format(r.live)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-muted-foreground">حداقل برنامه</dt>
+                      <dd className="mt-0.5 text-sm tabular-nums text-muted-foreground">{r.format(r.required)}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
             <p className={cn('mt-3 flex items-start gap-2 text-xs text-muted-foreground')}>
               <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
               <span>

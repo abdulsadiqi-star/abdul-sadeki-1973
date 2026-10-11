@@ -48,7 +48,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
       />
 
       <div className="space-y-6">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Section id="profile" title="مشخصات حساب">
             <div className="mb-4 flex items-center gap-3">
               <ChannelAvatar name={user.name} size="lg" />
@@ -56,7 +56,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
                 <p className="font-bold" dir="auto">
                   {user.name}
                 </p>
-                <p className="ltr-isolate truncate text-sm text-muted-foreground">{user.email}</p>
+                <p className="ltr-isolate w-fit max-w-full truncate text-sm text-muted-foreground">{user.email}</p>
               </div>
             </div>
             <DefList
