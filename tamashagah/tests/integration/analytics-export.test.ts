@@ -51,7 +51,7 @@ describe('GET /api/studio/analytics/export', () => {
     expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     expect(res.headers.get('content-disposition')).toMatch(/^attachment; filename="tamashagah-analytics-csv-owner-\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv"$/);
-    expect(text.startsWith('﻿')).toBe(true);
+    expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]); // UTF-8 BOM: Excel opens Persian text correctly
 
     const rows = parseCsv(text);
     const [header, ...days] = rows;
