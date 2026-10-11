@@ -14,6 +14,7 @@ export function PlaylistCard({
   videoCount,
   coverUrl,
   badge,
+  href: hrefOverride,
 }: {
   id: string;
   title: string;
@@ -22,9 +23,11 @@ export function PlaylistCard({
   coverUrl: string | null;
   /** Optional extra badge text on the cover (e.g. "خصوصی"). */
   badge?: string;
+  /** Override the link target (the system "watch later" list lives at /library/watch-later). */
+  href?: string;
 }) {
   const f = useFormatter();
-  const href = `/playlist/${id}` as Route;
+  const href = (hrefOverride ?? `/playlist/${id}`) as Route;
   return (
     <article className="group/playlist flex min-w-0 flex-col gap-3">
       <Link
