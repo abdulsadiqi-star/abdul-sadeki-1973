@@ -155,7 +155,7 @@ test.describe('watch page', () => {
       // phones and tablets: the player is pinned under the header so it stays visible while reading and commenting
       const box = (await playerOf(page).boundingBox())!;
       expect(box.width).toBeGreaterThan(viewport.width - 4);
-      await page.evaluate(() => window.scrollTo(0, 900));
+      await page.evaluate(() => window.scrollTo(0, 320)); // (it stays pinned while its own column is on screen)
       await expect.poll(async () => (await playerOf(page).boundingBox())!.y).toBeLessThan(140);
       expect((await playerOf(page).boundingBox())!.y).toBeGreaterThanOrEqual(0);
     }
@@ -733,7 +733,7 @@ test.describe('engagement and comments', () => {
       await expect(page.getByRole('listitem').filter({ hasText: 'این دیدگاه نباید ثبت شود' })).toHaveCount(0);
 
       await asCreator.reload();
-      await asCreator.getByRole('button', { name: `گزینه‌های دیدگاه ${viewer.name}` }).click();
+      await row.getByRole('button', { name: `گزینه‌های دیدگاه ${viewer.name}` }).click();
       await asCreator.getByRole('menuitem', { name: /رفع مسدودیت کاربر/ }).click();
       await expect(asCreator.getByText(/از مسدودیت خارج شد/).first()).toBeVisible();
     });
