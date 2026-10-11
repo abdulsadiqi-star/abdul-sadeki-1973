@@ -160,11 +160,13 @@ services:
         condition: service_healthy
       objectstore-init:
         condition: service_completed_successfully
-    # Transcoding needs scratch space; mount a fast disk in production.
-    tmpfs:
-      - /tmp:size=4g
+    # Transcoding scratch space (WORKER_TMP_DIR). Disk-backed on purpose: tmpfs would count against RAM.
+    # Point this volume at a fast disk with room for a few source files plus their renditions.
+    volumes:
+      - worker-tmp:/var/tmp/tamashagah
 
 volumes:
   pgdata:
   redisdata:
   objectstore-data:
+  worker-tmp:

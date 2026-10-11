@@ -85,5 +85,8 @@ COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 #   docker compose exec worker node dist/scripts/promote-user.mjs you@example.com admin
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./
+# Scratch space for transcoding (source download + HLS output). A disk-backed volume in Compose, not RAM.
+RUN mkdir -p /var/tmp/tamashagah && chown node:node /var/tmp/tamashagah
+ENV WORKER_TMP_DIR=/var/tmp/tamashagah
 USER node
 CMD ["node", "--enable-source-maps", "dist/worker/index.mjs"]
