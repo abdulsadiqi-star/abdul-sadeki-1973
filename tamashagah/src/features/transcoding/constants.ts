@@ -42,6 +42,24 @@ export const SOURCE_LIMITS = {
   maxDurationSeconds: 4 * 3600,
 } as const;
 
+/**
+ * ffprobe `format_name` tokens we accept as real video containers. ffmpeg happily "demuxes" almost anything — a
+ * plain text file is probed as an ANSI-art video by the `tty` demuxer — so the container must be one that people
+ * actually upload (the extension allow-list in `features/uploads/policy.ts` maps onto exactly these).
+ */
+export const ALLOWED_CONTAINERS: ReadonlySet<string> = new Set([
+  'mov', // mp4 / m4v / mov / 3gp  (ffprobe reports "mov,mp4,m4a,3gp,3g2,mj2")
+  'mp4',
+  'matroska', // mkv / webm  ("matroska,webm")
+  'webm',
+  'avi',
+  'asf', // wmv
+  'flv',
+  'mpeg', // mpg / mpeg (program stream)
+  'mpegts',
+  'ogg', // ogv
+]);
+
 /** Output frame rate is kept in this range (halved / doubled by whole factors to get there). */
 export const FPS_RANGE = { min: 12, max: 60 } as const;
 

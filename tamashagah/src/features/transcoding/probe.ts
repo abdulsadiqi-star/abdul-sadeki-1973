@@ -5,7 +5,7 @@
  *   ffprobe -v error -print_format json -show_format -show_streams <file>
  * and returns a `SourceInfo` (or throws a `TranscodeError` that explains why the file is refused).
  */
-import { FPS_RANGE, SOURCE_LIMITS } from './constants';
+import { ALLOWED_CONTAINERS, FPS_RANGE, SOURCE_LIMITS } from './constants';
 import { TranscodeError } from './errors';
 
 export type Fps = { num: number; den: number; value: number };
@@ -118,6 +118,12 @@ export function parseProbe(input: unknown): SourceInfo {
   const raw = (input ?? {}) as RawProbe;
   const streams = Array.isArray(raw.streams) ? raw.streams : [];
   if (streams.length === 0 && !raw.format) throw new TranscodeError('UNREADABLE', 'ffprobe returned no streams');
+
+  // Refuse things ffmpeg can technically open but that are not video files (text → "ANSI art", raw bitstreams, ...).
+  const formatName = raw.format?.format_name;
+  if (formatName && !formatName.split(',').some((token) => ALLOWED_CONTAINERS.has(token.trim()))) {
+    throw new TranscodeError('UNREADABLE', `unsupported container "${formatName.slice(0, 40)}"`);
+  }
 
   // Cover art (attached pictures) is not a video stream.
   const video = streams.find((s) => s.codec_type === 'video' && !s.disposition?.attached_pic);

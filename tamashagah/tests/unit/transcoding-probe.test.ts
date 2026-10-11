@@ -104,6 +104,15 @@ describe('ffprobe parsing: rejections', () => {
     expect(code(() => parseProbe(null))).toBe('UNREADABLE');
   });
 
+  it('things that are not video containers (ffmpeg would "demux" them anyway)', () => {
+    // a text file is probed by the `tty` demuxer as a 640x400 "ANSI art" video
+    expect(code(() => parseProbe(probe([video({ codec_name: 'ansi', width: 640, height: 400 })], { format_name: 'tty', duration: '0.32' })))).toBe('UNREADABLE');
+    expect(code(() => parseProbe(probe([video()], { format_name: 'h264', duration: '3' })))).toBe('UNREADABLE'); // raw bitstream
+    for (const formatName of ['mov,mp4,m4a,3gp,3g2,mj2', 'matroska,webm', 'avi', 'asf', 'flv', 'mpeg', 'mpegts', 'ogg']) {
+      expect(code(() => parseProbe(probe([video()], { format_name: formatName, duration: '3' }))), formatName).toBeNull();
+    }
+  });
+
   it('absurd dimensions', () => {
     expect(code(() => parseProbe(probe([video({ width: 0, height: 0 })])))).toBe('INVALID_DIMENSIONS');
     expect(code(() => parseProbe(probe([video({ width: 8, height: 8 })])))).toBe('INVALID_DIMENSIONS');

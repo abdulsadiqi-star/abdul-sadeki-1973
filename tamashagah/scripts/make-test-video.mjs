@@ -64,7 +64,8 @@ function run(args, { stdoutTo } = {}) {
 }
 
 const h264 = ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-pix_fmt', 'yuv420p'];
-const aac = ['-c:a', 'aac', '-b:a', '96k'];
+// Stereo like real recordings (the `sine` source is mono).
+const aac = ['-c:a', 'aac', '-b:a', '96k', '-ac', '2'];
 
 function standardClip({ width, height, fps = 30, palette = 'violet', audio = true, frequency = 440 }) {
   return async ({ out, seconds }) => {
