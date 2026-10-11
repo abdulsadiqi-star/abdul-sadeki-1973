@@ -44,8 +44,42 @@ function cli<T>(...args: string[]): T {
   return JSON.parse(out.trim().split('\n').at(-1)!) as T;
 }
 
+/** What `dbState` can ask for (mirrors `StateQuery` of the fixtures CLI). */
+type StateQuery = {
+  videoId?: string;
+  reportIds?: string[];
+  commentId?: string;
+  channelId?: string;
+  userId?: string;
+  ticketId?: string;
+  monetizationId?: string;
+  verificationId?: string;
+  notificationsFor?: string;
+  auditWhere?: { videoId?: string; commentId?: string; channelId?: string; targetUserId?: string; actorId?: string };
+};
+type NotificationRow = { type: string; title: string; body: string | null };
+/** The answer: only the parts named in the query are present at run time (reading anything else fails the test loudly). */
+type DbState = {
+  video: { exists: boolean; takedown: boolean; takedownReason: string | null; commentCount: number };
+  reports: Record<string, { status: string; resolution: string | null; handled: boolean }>;
+  comment: { status: string; moderationNote: string | null };
+  channel: { isVerified: boolean; suspended: boolean };
+  user: { role: string; status: string; sessions: number };
+  ticket: { status: string; messages: number };
+  monetization: { status: string; decisionNote: string | null };
+  verification: { status: string; decisionNote: string | null };
+  notifications: NotificationRow[];
+  audit: { type: string; reason: string | null; reportId: string | null }[];
+};
+
 const createScenario = () => cli<Scenario>('scenario', E2E_PASSWORD);
-const dbState = <T = Record<string, any>>(query: object) => cli<T>('state', JSON.stringify(query));
+const dbState = (query: StateQuery) => cli<DbState>('state', JSON.stringify(query));
+
+/** The header bell's API: what the signed-in user was told. */
+async function notificationsOf(page: Page): Promise<NotificationRow[]> {
+  const body = (await (await page.request.get('/api/notifications?limit=10')).json()) as { items: NotificationRow[] };
+  return body.items;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------
 // UI helpers
@@ -164,7 +198,7 @@ test.describe('moderation flow', () => {
     await expect(dialog.getByText('دلیل باید دست‌کم ۳ نویسه باشد.')).toBeVisible();
     await dialog.getByRole('button', { name: 'انصراف' }).click();
     await expect(dialog).toHaveCount(0);
-    expect(dbState<any>({ videoId: s.video.id }).video.takedown).toBe(false);
+    expect(dbState({ videoId: s.video.id }).video.takedown).toBe(false);
 
     // 4. take the video down with a reason
     const reason = `نقض قانون اطلاعات نادرست ${s.token}`;
@@ -175,7 +209,7 @@ test.describe('moderation flow', () => {
     await expect(page.getByText('اقدام شد').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'بازگرداندن ویدیو' })).toBeVisible(); // only the undo is offered now
 
-    const afterTakedown = dbState<any>({
+    const afterTakedown = dbState({
       videoId: s.video.id,
       reportIds: [s.report.id],
       auditWhere: { videoId: s.video.id },
@@ -184,7 +218,7 @@ test.describe('moderation flow', () => {
     expect(afterTakedown.video).toMatchObject({ takedown: true, takedownReason: reason });
     expect(afterTakedown.reports[s.report.id]).toMatchObject({ status: 'ACTIONED', handled: true });
     expect(afterTakedown.audit).toEqual([expect.objectContaining({ type: 'VIDEO_TAKEDOWN', reason })]); // exactly one audit row
-    expect(afterTakedown.notifications.some((n: any) => n.type === 'MODERATION' && n.body.includes(reason))).toBe(true);
+    expect(afterTakedown.notifications.some((n) => n.type === 'MODERATION' && !!n.body?.includes(reason))).toBe(true);
 
     // 5. the visitor no longer finds it and gets a 404 for its files; staff still can see it.
     //    (the media route remembers a video's visibility for up to 10 s, hence the polling)
@@ -197,8 +231,7 @@ test.describe('moderation flow', () => {
 
     // 6. the creator is told why (notification API of the header bell)
     const creator = await newSession(browser, baseURL, s.creator);
-    const notifications = await (await creator.page.request.get('/api/notifications?limit=10')).json();
-    const note = notifications.items.find((n: any) => n.title.includes(s.video.title));
+    const note = (await notificationsOf(creator.page)).find((n) => n.title.includes(s.video.title));
     expect(note?.body).toContain(reason);
     await creator.context.close();
 
@@ -211,7 +244,7 @@ test.describe('moderation flow', () => {
     await decide(page, `بازبینی شد و مشکلی نبود ${s.token}`, 'بازگرداندن ویدیو');
     await toast(page, 'ویدیو دوباره در دسترس قرار گرفت.');
     await expect(page.getByRole('listitem').filter({ hasText: s.video.title })).toHaveCount(0); // no longer in the "taken down" list
-    expect(dbState<any>({ videoId: s.video.id }).video.takedown).toBe(false);
+    expect(dbState({ videoId: s.video.id }).video.takedown).toBe(false);
 
     await visitor.page.goto('/');
     await expect(visitor.page.getByRole('link', { name: s.video.title }).first()).toBeVisible();
@@ -239,7 +272,7 @@ test.describe('moderation flow', () => {
     await page.getByRole('button', { name: 'حذف دیدگاه' }).click();
     await decide(page, 'تبلیغ مزاحم و تکراری', 'حذف دیدگاه');
     await toast(page, 'دیدگاه حذف شد.');
-    let state = dbState<any>({ commentId: s.comment.id, videoId: s.video.id, reportIds: [s.commentReport.id] });
+    let state = dbState({ commentId: s.comment.id, videoId: s.video.id, reportIds: [s.commentReport.id] });
     expect(state.comment.status).toBe('DELETED');
     expect(state.video.commentCount).toBe(0);
     expect(state.reports[s.commentReport.id].status).toBe('ACTIONED');
@@ -247,7 +280,7 @@ test.describe('moderation flow', () => {
     await page.getByRole('button', { name: 'بازگرداندن دیدگاه' }).click();
     await decide(page, 'اشتباه بود، دیدگاه مشکلی ندارد', 'بازگرداندن دیدگاه');
     await toast(page, /دیدگاه بازگردانده شد/);
-    state = dbState<any>({ commentId: s.comment.id, videoId: s.video.id });
+    state = dbState({ commentId: s.comment.id, videoId: s.video.id });
     expect(state.comment.status).toBe('APPROVED');
     expect(state.video.commentCount).toBe(1);
 
@@ -256,9 +289,9 @@ test.describe('moderation flow', () => {
     await toast(page, 'دیدگاه‌نویس در این کانال مسدود شد.');
     await expect(page.getByRole('button', { name: 'رفع مسدودیت دیدگاه‌نویس' })).toBeVisible();
 
-    const audit = dbState<any>({ auditWhere: { commentId: s.comment.id } }).audit.map((r: any) => r.type);
+    const audit = dbState({ auditWhere: { commentId: s.comment.id } }).audit.map((r) => r.type);
     expect(audit).toEqual(['COMMENT_DELETE', 'COMMENT_RESTORE']);
-    expect(dbState<any>({ auditWhere: { targetUserId: s.commenter.id } }).audit.map((r: any) => r.type)).toContain('CHANNEL_USER_BLOCK');
+    expect(dbState({ auditWhere: { targetUserId: s.commenter.id } }).audit.map((r) => r.type)).toContain('CHANNEL_USER_BLOCK');
   });
 
   test('a report can be dismissed with a reason', async ({ page }) => {
@@ -269,10 +302,10 @@ test.describe('moderation flow', () => {
     await decide(page, 'ادعا با مدارک همخوانی ندارد', 'رد گزارش');
     await toast(page, 'گزارش رد شد.');
     await expect(page.getByText('رد شد').first()).toBeVisible();
-    const state = dbState<any>({ reportIds: [s.report.id], videoId: s.video.id, auditWhere: { videoId: s.video.id } });
+    const state = dbState({ reportIds: [s.report.id], videoId: s.video.id, auditWhere: { videoId: s.video.id } });
     expect(state.reports[s.report.id].status).toBe('DISMISSED');
     expect(state.video.takedown).toBe(false);
-    expect(state.audit.map((r: any) => r.type)).toEqual(['REPORT_DISMISS']);
+    expect(state.audit.map((r) => r.type)).toEqual(['REPORT_DISMISS']);
   });
 
   test('the queue filters, sorts and links to the report', async ({ page }) => {
@@ -312,7 +345,7 @@ test.describe('roles and accounts', () => {
     await decide(page, 'ارتقا پس از دوره‌ی آزمایشی', 'ثبت نقش جدید');
     await toast(page, 'نقش به «ناظر» تغییر کرد.');
     await expect(page.getByText('ناظر').first()).toBeVisible();
-    expect(dbState<any>({ userId: s.promotee.id }).user.role).toBe('MODERATOR');
+    expect(dbState({ userId: s.promotee.id }).user.role).toBe('MODERATOR');
 
     // the promoted user reaches the panel
     const promoted = await newSession(browser, baseURL, s.promotee);
@@ -324,7 +357,7 @@ test.describe('roles and accounts', () => {
     await page.getByRole('button', { name: 'تعلیق حساب' }).click();
     await decide(page, 'نقض قوانین سازمانی', 'تعلیق حساب');
     await toast(page, /حساب تعلیق شد/);
-    const suspended = dbState<any>({ userId: s.promotee.id });
+    const suspended = dbState({ userId: s.promotee.id });
     expect(suspended.user).toMatchObject({ status: 'SUSPENDED', sessions: 0 });
     await promoted.page.goto('/admin');
     await expect(promoted.page).toHaveURL(/\/login/);
@@ -339,8 +372,8 @@ test.describe('roles and accounts', () => {
     await expect(again.page.getByRole('heading', { name: 'نمای کلی', level: 1 })).toBeVisible();
     await again.context.close();
 
-    expect(dbState<any>({ auditWhere: { targetUserId: s.promotee.id } }).audit.map((r: any) => r.type)).toEqual(['USER_ROLE_CHANGE', 'USER_SUSPEND', 'USER_RESTORE']);
-    const notes = dbState<any>({ notificationsFor: s.promotee.id }).notifications.map((n: any) => n.type);
+    expect(dbState({ auditWhere: { targetUserId: s.promotee.id } }).audit.map((r) => r.type)).toEqual(['USER_ROLE_CHANGE', 'USER_SUSPEND', 'USER_RESTORE']);
+    const notes = dbState({ notificationsFor: s.promotee.id }).notifications.map((n) => n.type);
     expect(notes).toEqual(expect.arrayContaining(['SYSTEM', 'MODERATION']));
   });
 
@@ -370,13 +403,13 @@ test.describe('roles and accounts', () => {
     await decide(page, 'هویت کانال تأیید شد', 'تأیید کانال');
     await toast(page, 'نشان تأیید به کانال داده شد.');
     await expect(page.getByRole('button', { name: 'برداشتن تیک' })).toBeVisible();
-    expect(dbState<any>({ channelId: s.creator.channel!.id }).channel.isVerified).toBe(true);
+    expect(dbState({ channelId: s.creator.channel!.id }).channel.isVerified).toBe(true);
 
     await page.getByRole('button', { name: 'تعلیق', exact: true }).click();
     await decide(page, 'تبلیغ طرح‌های مشکوک', 'تعلیق کانال');
     await toast(page, 'کانال تعلیق شد.');
     await expect(page.getByText(/تعلیق‌شده در/)).toBeVisible();
-    expect(dbState<any>({ channelId: s.creator.channel!.id }).channel.suspended).toBe(true);
+    expect(dbState({ channelId: s.creator.channel!.id }).channel.suspended).toBe(true);
 
     await page.getByRole('button', { name: 'رفع تعلیق' }).click();
     await decide(page, 'استیناف پذیرفته شد', 'رفع تعلیق');
@@ -384,7 +417,7 @@ test.describe('roles and accounts', () => {
     await page.getByRole('button', { name: 'برداشتن تیک' }).click();
     await decide(page, 'نقض شرایط تیک تأیید', 'برداشتن تیک');
     await toast(page, 'نشان تأیید برداشته شد.');
-    expect(dbState<any>({ auditWhere: { channelId: s.creator.channel!.id } }).audit.map((r: any) => r.type)).toEqual(['CHANNEL_VERIFY', 'CHANNEL_SUSPEND', 'CHANNEL_RESTORE', 'CHANNEL_UNVERIFY']);
+    expect(dbState({ auditWhere: { channelId: s.creator.channel!.id } }).audit.map((r) => r.type)).toEqual(['CHANNEL_VERIFY', 'CHANNEL_SUSPEND', 'CHANNEL_RESTORE', 'CHANNEL_UNVERIFY']);
   });
 
   test('videos: force delete is an administrator-only, confirmed action', async ({ page, browser, baseURL }) => {
@@ -403,12 +436,12 @@ test.describe('roles and accounts', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText('این کار قابل بازگشت نیست.')).toBeVisible();
     await dialog.getByRole('button', { name: 'انصراف' }).click();
-    expect(dbState<any>({ videoId: s.video2.id }).video).not.toBeNull();
+    expect(dbState({ videoId: s.video2.id }).video.exists).toBe(true);
 
     await row.getByRole('button', { name: 'حذف قطعی' }).click();
     await decide(page, 'حکم قضایی حق تکثیر', 'حذف قطعی');
     await toast(page, /ویدیو برای همیشه حذف شد|ویدیو حذف شد/);
-    expect(dbState<any>({ videoId: s.video2.id }).video).toBeNull();
+    expect(dbState({ videoId: s.video2.id }).video.exists).toBe(false);
     await expect(page.getByRole('listitem').filter({ hasText: s.video2.title })).toHaveCount(0);
   });
 });
@@ -430,25 +463,25 @@ test.describe('creator programs', () => {
     const stats = page.locator('#stats');
     await expect(stats.getByText('دنبال‌کننده').filter({ visible: true }).first()).toBeVisible();
     await expect(stats.getByText(/رسیده/).filter({ visible: true }).first()).toBeVisible();
-    await expect.poll(() => dbState<any>({ monetizationId: s.monetization.id }).monetization.status).toBe('UNDER_REVIEW');
+    await expect.poll(() => dbState({ monetizationId: s.monetization.id }).monetization.status).toBe('UNDER_REVIEW');
 
     await page.getByRole('button', { name: 'رد درخواست' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'رد درخواست', exact: true }).click();
     await expect(dialog.getByText('توضیح تصمیم باید دست‌کم ۳ نویسه باشد.')).toBeVisible();
     await dialog.getByRole('button', { name: 'انصراف' }).click();
-    expect(dbState<any>({ monetizationId: s.monetization.id }).monetization.status).toBe('UNDER_REVIEW');
+    expect(dbState({ monetizationId: s.monetization.id }).monetization.status).toBe('UNDER_REVIEW');
 
     await page.getByRole('button', { name: 'تأیید درخواست' }).click();
     await decide(page, 'شرایط برنامه برقرار است', 'تأیید درخواست');
     await toast(page, 'درخواست درآمدزایی تأیید شد.');
     await expect(page.getByText('تأیید شده').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'تعلیق درآمدزایی' })).toBeVisible(); // only the legal next move is offered
-    expect(dbState<any>({ monetizationId: s.monetization.id }).monetization).toMatchObject({ status: 'APPROVED', decisionNote: 'شرایط برنامه برقرار است' });
+    expect(dbState({ monetizationId: s.monetization.id }).monetization).toMatchObject({ status: 'APPROVED', decisionNote: 'شرایط برنامه برقرار است' });
 
     const creator = await newSession(browser, baseURL, s.applicant);
-    const { items } = await (await creator.page.request.get('/api/notifications?limit=10')).json();
-    expect(items.some((n: any) => n.title.includes('درخواست درآمدزایی') && n.title.includes('تأیید شد'))).toBe(true);
+    const items = await notificationsOf(creator.page);
+    expect(items.some((n) => n.title.includes('درخواست درآمدزایی') && n.title.includes('تأیید شد'))).toBe(true);
     await creator.context.close();
   });
 
@@ -471,7 +504,7 @@ test.describe('creator programs', () => {
     await toast(page, 'درخواست رد شد.');
     await expect(page.getByText('رد شده').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'تأیید و دادن تیک' })).toHaveCount(0); // decided: final
-    expect(dbState<any>({ verificationId: s.verification.id }).verification.status).toBe('REJECTED');
+    expect(dbState({ verificationId: s.verification.id }).verification.status).toBe('REJECTED');
   });
 
   test('verification: approval sets the channel badge', async ({ page }) => {
@@ -481,7 +514,7 @@ test.describe('creator programs', () => {
     await page.getByRole('button', { name: 'تأیید و دادن تیک' }).click();
     await decide(page, 'هویت تأیید شد', 'تأیید و دادن تیک');
     await toast(page, 'درخواست تأیید شد و کانال نشان تأیید گرفت.');
-    expect(dbState<any>({ channelId: s.verifier.channel!.id, verificationId: s.verification.id })).toMatchObject({ channel: { isVerified: true }, verification: { status: 'APPROVED' } });
+    expect(dbState({ channelId: s.verifier.channel!.id, verificationId: s.verification.id })).toMatchObject({ channel: { isVerified: true }, verification: { status: 'APPROVED' } });
   });
 });
 
@@ -506,9 +539,9 @@ test.describe('support', () => {
     await toast(page, 'پاسخ برای کاربر ارسال شد.');
     await expect(page.getByRole('list', { name: 'پیام‌های تیکت' }).getByText(reply)).toBeVisible();
     await expect(page.getByText('پاسخ داده شده').first()).toBeVisible();
-    const answered = dbState<any>({ ticketId: s.ticket.id, notificationsFor: s.creator.id });
+    const answered = dbState({ ticketId: s.ticket.id, notificationsFor: s.creator.id });
     expect(answered.ticket).toEqual({ status: 'ANSWERED', messages: 2 });
-    expect(answered.notifications.some((n: any) => n.type === 'TICKET_REPLY' && n.body.includes(reply))).toBe(true);
+    expect(answered.notifications.some((n) => n.type === 'TICKET_REPLY' && !!n.body?.includes(reply))).toBe(true);
 
     // close (confirmed) and reopen
     await page.getByRole('button', { name: 'بستن تیکت' }).click();
@@ -518,8 +551,8 @@ test.describe('support', () => {
     await expect(page.getByLabel(/پاسخ شما به تیکت/)).toHaveCount(0);
     await page.getByRole('button', { name: 'بازگشایی تیکت' }).click();
     await toast(page, 'تیکت دوباره باز شد.');
-    expect(dbState<any>({ ticketId: s.ticket.id }).ticket.status).toBe('OPEN');
-    expect(dbState<any>({ auditWhere: { targetUserId: s.creator.id } }).audit.map((r: any) => r.type)).toEqual(['TICKET_REPLY', 'TICKET_CLOSE', 'TICKET_REOPEN']);
+    expect(dbState({ ticketId: s.ticket.id }).ticket.status).toBe('OPEN');
+    expect(dbState({ auditWhere: { targetUserId: s.creator.id } }).audit.map((r) => r.type)).toEqual(['TICKET_REPLY', 'TICKET_CLOSE', 'TICKET_REOPEN']);
 
     // the ticket shows up in the filtered list
     await page.goto(`/admin/support?status=OPEN&category=UPLOAD&q=${encodeURIComponent(s.token)}`);
