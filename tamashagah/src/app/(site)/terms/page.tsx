@@ -1,7 +1,13 @@
-import { ComingSoon } from '@/components/coming-soon';
+import type { Metadata } from 'next';
+import { LegalDocumentView } from '@/features/info/components/legal-document';
+import { termsDocument } from '@/features/info/legal';
 
-export const metadata = { title: 'قوانین و مقررات' };
+export const metadata: Metadata = {
+  title: 'شرایط استفاده',
+  description: 'شرایط استفاده از تماشاگاه: حساب کاربری، محتوا، رفتار مجاز، حق تکثیر و مسئولیت‌ها (الگوی حقوقی؛ نیازمند بازبینی اپراتور).',
+  alternates: { canonical: '/terms' },
+};
 
-export default function Page() {
-  return <ComingSoon title="قوانین و مقررات" />;
+export default function TermsPage() {
+  return <LegalDocumentView doc={termsDocument} />;
 }
