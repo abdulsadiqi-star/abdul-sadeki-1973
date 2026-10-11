@@ -44,11 +44,18 @@ COPY prisma.config.ts ./
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # ---------------------------------------------------------------------------
-# One-off migration runner (has the Prisma CLI).
-FROM deps AS migrate
+# One-off migration runner: only the Prisma CLI (version read from package.json), not the whole dev toolchain.
+FROM base AS migrate
+COPY package.json /tmp/package.json
+RUN PRISMA_VERSION="$(node -p "require('/tmp/package.json').devDependencies.prisma")" \
+ && DOTENV_VERSION="$(node -p "require('/tmp/package.json').devDependencies.dotenv")" \
+ && npm init -y >/dev/null \
+ && npm install --omit=dev --no-audit --no-fund "prisma@${PRISMA_VERSION}" "dotenv@${DOTENV_VERSION}" \
+ && rm /tmp/package.json
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
+USER node
+CMD ["npx", "--no-install", "prisma", "migrate", "deploy"]
 
 # ---------------------------------------------------------------------------
 FROM node:${NODE_VERSION}-bookworm-slim AS web
@@ -74,7 +81,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist/worker ./dist/worker
+# dist/worker = the queue worker; dist/scripts = operator tools (promote-user, check-storage), e.g.
+#   docker compose exec worker node dist/scripts/promote-user.mjs you@example.com admin
+COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./
 USER node
-CMD ["node", "--enable-source-maps", "dist/worker/index.js"]
+CMD ["node", "--enable-source-maps", "dist/worker/index.mjs"]

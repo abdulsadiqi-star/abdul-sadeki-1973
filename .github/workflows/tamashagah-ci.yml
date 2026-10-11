@@ -35,6 +35,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: pnpm audit:security
       - run: pnpm test:unit
       - run: pnpm test:components
 
@@ -144,23 +145,82 @@ jobs:
             tamashagah/.data/*.log
           if-no-files-found: ignore
 
-  docker:
-    name: Docker images build
+  storage-s3:
+    name: Storage self-test (S3-compatible server)
     needs: quality
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
-    strategy:
-      matrix:
-        target: [web, worker, migrate]
+    services:
+      objectstore:
+        image: rustfs/rustfs:1.0.1
+        env:
+          # Throw-away credentials of an ephemeral CI container — not secrets.
+          RUSTFS_ACCESS_KEY: ci-access-key
+          RUSTFS_SECRET_KEY: ci-secret-key-0123456789
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/health" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: tamashagah
+      S3_ACCESS_KEY_ID: ci-access-key
+      S3_SECRET_ACCESS_KEY: ci-secret-key-0123456789
+      S3_FORCE_PATH_STYLE: "true"
+      ALLOW_INSECURE_HTTP: "true"
+      # Required by the shared env schema; this job never connects to them.
+      DATABASE_URL: postgresql://ci:ci-only-password@localhost:5432/unused
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: pnpm/action-setup@v4
         with:
-          context: tamashagah
-          target: ${{ matrix.target }}
-          push: false
-          cache-from: type=gha,scope=${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          package_json_file: tamashagah/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tamashagah/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Create the bucket
+        run: aws --endpoint-url "$S3_ENDPOINT" --region us-east-1 s3 mb "s3://$S3_BUCKET"
+        env:
+          AWS_ACCESS_KEY_ID: ci-access-key
+          AWS_SECRET_ACCESS_KEY: ci-secret-key-0123456789
+      - name: Put / get / range / multipart / presign / list / delete
+        run: pnpm check:storage
+        env:
+          SESSION_SECRET: ci-only-session-secret-0123456789abcdef0123456789abcdef
+
+  compose-smoke:
+    name: Docker Compose stack (build · migrate · boot · health)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create .env with generated secrets
+        run: node scripts/init-env.mjs
+      - name: Build images and start the whole stack
+        run: docker compose --profile app up -d --build --wait --wait-timeout 900
+      - name: Deep health check (database, Redis, object storage)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' 'http://localhost:3000/api/health?deep=1' || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          cat /tmp/health.json; echo
+          test "$code" = "200"
+      - name: Home page is served in Persian, RTL
+        run: curl -fsS http://localhost:3000/ | grep -q '<html lang="fa" dir="rtl"'
+      - name: Storage self-test from inside the worker container
+        run: docker compose exec -T worker node dist/scripts/check-storage.mjs
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose --profile app down -v

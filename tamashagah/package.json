@@ -11,9 +11,9 @@
     "dev": "next dev",
     "dev:worker": "tsx watch --env-file-if-exists=.env worker/index.ts",
     "build": "prisma generate && next build",
-    "build:worker": "esbuild worker/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --tsconfig=tsconfig.json --outfile=dist/worker/index.js",
+    "build:worker": "esbuild ./worker/index.ts ./scripts/promote-user.ts ./scripts/check-storage.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --tsconfig=tsconfig.json --outdir=dist --outbase=. --out-extension:.js=.mjs",
     "start": "next start",
-    "start:worker": "node --enable-source-maps dist/worker/index.js",
+    "start:worker": "node --enable-source-maps dist/worker/index.mjs",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
@@ -32,7 +32,9 @@
     "postinstall": "prisma generate",
     "setup:env": "node scripts/init-env.mjs",
     "test:components": "vitest run --project component",
-    "audit:security": "node scripts/audit-security.mjs"
+    "audit:security": "node scripts/audit-security.mjs",
+    "check:storage": "tsx --env-file-if-exists=.env scripts/check-storage.ts",
+    "user:promote": "tsx --env-file-if-exists=.env scripts/promote-user.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

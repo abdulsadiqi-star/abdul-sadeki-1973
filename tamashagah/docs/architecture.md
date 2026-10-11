@@ -42,7 +42,7 @@ Brand: original identity (violet → magenta, saffron accent, own logo mark). No
   cleanup, counter reconciliation. Needs FFmpeg/FFprobe.
 * **PostgreSQL** — source of truth, full-text search (generated `tsvector`, GIN) and trigram indexes (`pg_trgm`).
 * **Redis** — BullMQ queues and the rate limiter (falls back to memory for the limiter only).
-* **Storage** — private S3-compatible bucket (MinIO in dev, any S3 in prod) or the local filesystem driver.
+* **Storage** — private S3-compatible bucket (RustFS in the bundled Compose stack, any S3 service in production) or the local filesystem driver. `pnpm check:storage` verifies a backend (multipart, ranges, presign, listing, deletion).
 
 ## 3. Technology
 
@@ -56,7 +56,7 @@ Brand: original identity (violet → magenta, saffron accent, own logo mark). No
 | Uploads | tus protocol (`@tus/server`, `tus-js-client`) → S3 multipart or fs store |
 | Auth | Opaque DB-backed sessions (SHA-256-hashed tokens), argon2id (`@node-rs/argon2`), e-mail verification/reset tokens |
 | Quality | Vitest 5 (unit/component/integration), Playwright 1.64 + axe, ESLint 9, Prettier 3, GitHub Actions |
-| Ops | Docker Compose (postgres, redis, minio, mailpit, web, worker), `output: standalone` image |
+| Ops | Docker Compose (postgres, redis, objectstore, mailpit, migrate, web, worker), `output: standalone` image |
 
 > The shadcn **registry is not reachable** from the build sandbox, so UI primitives in `src/components/ui/` were written
 > by hand to the same API. They are RTL-hardened (logical properties, `rtl:` flips, Radix `Direction.Provider`).

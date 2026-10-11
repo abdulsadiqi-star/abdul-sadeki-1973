@@ -5,9 +5,9 @@
  *   pnpm setup:env            # refuses to overwrite an existing .env
  *   pnpm setup:env --force
  *
- * Generated: SESSION_SECRET, POSTGRES_PASSWORD, MINIO_ROOT_USER/PASSWORD.
- * DATABASE_URL and the S3 credentials are rewritten to match, so
- * `docker compose up -d postgres redis minio` works immediately.
+ * Generated: SESSION_SECRET, POSTGRES_PASSWORD, S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY (the bundled object store
+ * uses the same credentials as the app). DATABASE_URL and the S3 settings are rewritten to match, so
+ * `docker compose up -d postgres redis objectstore` works immediately.
  */
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
@@ -22,8 +22,8 @@ const hex = (n) => randomBytes(n).toString('hex');
 const secrets = {
   SESSION_SECRET: hex(32),
   POSTGRES_PASSWORD: hex(16),
-  MINIO_ROOT_USER: `tg${hex(4)}`,
-  MINIO_ROOT_PASSWORD: hex(16),
+  S3_ACCESS_KEY_ID: `tg${hex(4)}`,
+  S3_SECRET_ACCESS_KEY: hex(16),
 };
 
 let env = fs.readFileSync('.env.example', 'utf8');
@@ -34,14 +34,12 @@ const set = (key, value) => {
 
 set('SESSION_SECRET', secrets.SESSION_SECRET);
 set('POSTGRES_PASSWORD', secrets.POSTGRES_PASSWORD);
-set('MINIO_ROOT_USER', secrets.MINIO_ROOT_USER);
-set('MINIO_ROOT_PASSWORD', secrets.MINIO_ROOT_PASSWORD);
 set('DATABASE_URL', `postgresql://tamashagah:${secrets.POSTGRES_PASSWORD}@localhost:5432/tamashagah`);
 set('DATABASE_URL_TEST', `postgresql://tamashagah:${secrets.POSTGRES_PASSWORD}@localhost:5432/tamashagah_test`);
 set('S3_ENDPOINT', 'http://localhost:9000');
 set('S3_BUCKET', 'tamashagah');
-set('S3_ACCESS_KEY_ID', secrets.MINIO_ROOT_USER);
-set('S3_SECRET_ACCESS_KEY', secrets.MINIO_ROOT_PASSWORD);
+set('S3_ACCESS_KEY_ID', secrets.S3_ACCESS_KEY_ID);
+set('S3_SECRET_ACCESS_KEY', secrets.S3_SECRET_ACCESS_KEY);
 set('MAIL_TRANSPORT', 'smtp');
 set('SMTP_HOST', 'localhost');
 set('SMTP_PORT', '1025');
