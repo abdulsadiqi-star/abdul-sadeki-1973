@@ -163,7 +163,7 @@ async function state(query: StateQuery) {
   const out: Record<string, unknown> = {};
   if (query.videoId) {
     const v = await db.video.findUnique({ where: { id: query.videoId }, select: { takedownAt: true, takedownReason: true, commentCount: true } });
-    out.video = v && { takedown: !!v.takedownAt, takedownReason: v.takedownReason, commentCount: v.commentCount };
+    out.video = { exists: v !== null, takedown: !!v?.takedownAt, takedownReason: v?.takedownReason ?? null, commentCount: v?.commentCount ?? 0 };
   }
   if (query.reportIds) {
     const reports = await db.report.findMany({ where: { id: { in: query.reportIds } }, select: { id: true, status: true, resolution: true, handledById: true } });
