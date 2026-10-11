@@ -1,0 +1,18 @@
+# TLS reverse proxy used by docker-compose.proxy.yml. The site address comes from SITE_ADDRESS (your domain, e.g.
+# tamashagah.example.com). For a real domain Caddy obtains and renews Let's Encrypt certificates automatically
+# (ports 80 and 443 must reach this host); `localhost` gets a locally trusted certificate for testing.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Resumable uploads (tus PATCH requests) can be large; HLS reads are long-lived.
+	request_body {
+		max_size 4GB
+	}
+	reverse_proxy web:3000 {
+		flush_interval -1
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+	}
+}
