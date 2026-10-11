@@ -45,7 +45,11 @@
       "unrs-resolver",
       "sharp",
       "msgpackr-extract"
-    ]
+    ],
+    "overrides": {
+      "mysql2": ">=3.23.1",
+      "deepmerge-ts": ">=8.0.0"
+    }
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
