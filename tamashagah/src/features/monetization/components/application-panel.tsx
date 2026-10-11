@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { History } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/studio/status-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getFormatter } from '@/lib/format-server';
 import { labels } from '@/lib/i18n/fa';
@@ -45,9 +45,9 @@ export async function ApplicationPanel({
         {latest && latest.status !== 'DRAFT' && (
           <div className="space-y-4" data-testid="application-status" data-status={latest.status}>
             <div className="flex flex-wrap items-center gap-3">
-              <Badge variant={statusVariant[latest.status]} className="text-[13px]" data-testid="application-status-badge">
+              <StatusBadge variant={statusVariant[latest.status]} className="text-[13px]" data-testid="application-status-badge">
                 {labels.monetization[latest.status]}
-              </Badge>
+              </StatusBadge>
               <p className="text-sm">{statusDescription[latest.status]}</p>
             </div>
 
@@ -127,7 +127,7 @@ export async function ApplicationPanel({
               {older.map((application) => (
                 <li key={application.id} className="rounded-lg bg-muted/50 p-3">
                   <p className="flex flex-wrap items-center gap-2">
-                    <Badge variant={statusVariant[application.status]}>{labels.monetization[application.status]}</Badge>
+                    <StatusBadge variant={statusVariant[application.status]}>{labels.monetization[application.status]}</StatusBadge>
                     <span className="text-[13px] text-muted-foreground" suppressHydrationWarning>
                       ثبت‌شده در {f.date(application.createdAt, 'long')}
                     </span>

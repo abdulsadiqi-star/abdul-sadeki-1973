@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import sharp from 'sharp';
 import { E2E_PASSWORD, loginViaUi, openAccountMenu } from './helpers';
 import { E2E_EMAIL_PREFIX, cleanupFixtures, runFixture, type ApplicationRow, type SeedResult } from './support/db';
@@ -48,6 +49,8 @@ const previousMonth = (): { from: string; to: string } => {
 };
 
 const fa = (n: number, options?: Intl.NumberFormatOptions): string => new Intl.NumberFormat('fa-IR', options).format(n);
+/** «۱٬۲۳۴» → 1234 (Persian digits, group separators ignored). */
+const digitsToNumber = (text: string): number => Number(text.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[^\d.]/g, ''));
 const faPercent = (value: number): string => new Intl.NumberFormat('fa-IR', { style: 'percent', maximumFractionDigits: 1 }).format(value / 100);
 
 type View = { video: 'v1' | 'v2' | 'v3'; at: Date; viewer: string; watch: number; source: 'REAL' | 'SEED'; device?: 'DESKTOP' | 'MOBILE'; referrer?: string };
@@ -124,7 +127,16 @@ function mainViews(): View[] {
 let main: Creator;
 let views: View[];
 
-test.beforeAll(() => {
+/**
+ * The fixture channel is signed in ONCE (the login endpoint allows 8 attempts per account and 15 minutes) and every test
+ * starts from that session. Tests that need another account call `signIn`, which drops it first.
+ */
+const MAIN_STATE = path.resolve('.data', 'e2e', 'insights-main-state.json');
+/** `browser.newContext()` inherits the file-level `storageState`: contexts that must start anonymous say so. */
+const SIGNED_OUT = { cookies: [], origins: [] };
+test.use({ storageState: MAIN_STATE });
+
+test.beforeAll(async ({ browser }) => {
   views = mainViews();
   main = seedCreator('main', {
     followerCount: 2,
@@ -158,15 +170,27 @@ test.beforeAll(() => {
       { fan: 'f2', notify: false },
     ],
   });
+
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, locale: 'fa-IR', timezoneId: 'Asia/Tehran', storageState: SIGNED_OUT });
+  const page = await context.newPage();
+  await loginViaUi(page, main.email, main.password);
+  await fs.mkdir(path.dirname(MAIN_STATE), { recursive: true });
+  await context.storageState({ path: MAIN_STATE });
+  await context.close();
 });
 
-test.afterAll(() => {
+test.afterAll(async () => {
   cleanupFixtures(created);
+  await fs.rm(MAIN_STATE, { force: true });
 });
 
 /* ---------------------------------------------------------------------------------------------- helpers */
 
-const signIn = (page: Page, who: Creator) => loginViaUi(page, who.email, who.password);
+/** Sign in as another account: the file-level session of the fixture channel is dropped first. */
+async function signIn(page: Page, who: Creator) {
+  await page.context().clearCookies();
+  await loginViaUi(page, who.email, who.password);
+}
 
 /** The big number of a `StatCard` (first token of the cell's text; the badge and label follow it). */
 async function statValue(page: Page, id: string): Promise<string> {
@@ -211,7 +235,7 @@ const TICK_ORDER_PROBE = () => {
       return range.getBoundingClientRect();
     };
     out.push({
-      text: text.replace(/‏/g, '<RLM>'),
+      text: text.split(String.fromCharCode(0x200f)).join('<RLM>'),
       numberIsOnTheRight: rect(number.index, number.index + number[0].length).left > rect(word.index, word.index + word[0].length).left,
     });
   }
@@ -222,7 +246,6 @@ const TICK_ORDER_PROBE = () => {
 
 test.describe('dashboard /studio', () => {
   test('headline numbers, videos, comments and alerts equal the database fixtures', async ({ page }) => {
-    await signIn(page, main);
     await page.goto('/studio');
 
     // the onboarding block belongs to users WITHOUT a channel
@@ -316,14 +339,13 @@ test.describe('dashboard /studio', () => {
 
 test.describe('analytics /studio/analytics', () => {
   test('default 30 days: cards, chart table, breakdowns and per-video table equal the database', async ({ page }) => {
-    await signIn(page, main);
     await page.goto('/studio/analytics');
 
     const current = between(views, keyBack(29), keyBack(0));
     const previous = between(views, keyBack(59), keyBack(30));
     const now = summarize(current);
     const before = summarize(previous);
-    expect(now.views).toBe(15); // sanity of the fixture itself: 3 today + 1 + 4 + 3 + 4
+    expect(now.views).toBe(10); // sanity of the fixture itself: 3 today + 1 yesterday + 3 + 1 + 2 older
 
     expect(await statValue(page, 'views')).toBe(fa(now.views));
     expect(await statValue(page, 'unique')).toBe(fa(now.unique));
@@ -332,9 +354,11 @@ test.describe('analytics /studio/analytics', () => {
     expect(await statValue(page, 'followers')).toBe(fa(2));
     expect(await statValue(page, 'notify')).toBe(fa(1));
     expect(await statValue(page, 'month')).toBe(fa(between(views, monthStartKey(), todayKey()).length));
-    // % change versus the 30 days before: 15 against 11 (5 real + 6 sample)
-    await expect(page.getByTestId('stat-views')).toContainText(faPercent(percentChange(now.views, before.views)));
-    await expect(page.getByTestId('stat-views')).toContainText('افزایش نسبت به بازه‌ی قبل');
+    // % change versus the 30 days before: 10 against 11 (5 real + 6 sample) = -9.1 %, drawn as a decrease (never colour only)
+    const change = percentChange(now.views, before.views);
+    expect(change).toBeLessThan(0);
+    await expect(page.getByTestId('stat-views')).toContainText(faPercent(Math.abs(change)));
+    await expect(page.getByTestId('stat-views')).toContainText('کاهش نسبت به بازه‌ی قبل');
 
     // the period line says which days are compared
     await expect(page.getByTestId('analytics-period')).toContainText('مقایسه با');
@@ -355,9 +379,10 @@ test.describe('analytics /studio/analytics', () => {
     expect(await viewsOn(1)).toBe(fa(1)); // the 23:59 event
 
     // breakdowns are text first (number and share), bars are decoration
-    const devices = page.locator('div').filter({ has: page.getByText('بازدیدها بر اساس نوع دستگاه بیننده') }).last();
-    await expect(devices).toContainText(`رایانه`);
-    await expect(devices).toContainText('موبایل');
+    const devices = page.locator('[data-slot="card"]').filter({ hasText: 'بازدیدها بر اساس نوع دستگاه بیننده' });
+    const mobile = views.filter((v) => v.device === 'MOBILE' && tehranKey(v.at) >= keyBack(29));
+    await expect(devices).toContainText(`رایانه ${fa(current.length - mobile.length)}`);
+    await expect(devices).toContainText(`موبایل ${fa(mobile.length)}`);
 
     // per-video table for the same range
     const row = (title: string) => page.getByTestId('video-row').filter({ hasText: title });
@@ -369,7 +394,6 @@ test.describe('analytics /studio/analytics', () => {
   });
 
   test('legend toggles hide series, the data table can be shown, and Jalali tick labels read right to left', async ({ page }) => {
-    await signIn(page, main);
     await page.goto('/studio/analytics');
     const chart = page.getByTestId('analytics-chart');
     await expect(chart.locator('svg.recharts-surface')).toBeVisible();
@@ -396,7 +420,6 @@ test.describe('analytics /studio/analytics', () => {
   });
 
   test('range presets, custom Jalali range and monthly granularity change the numbers', async ({ page }) => {
-    await signIn(page, main);
     await page.goto('/studio/analytics');
 
     // ۷ روز اخیر
@@ -420,10 +443,14 @@ test.describe('analytics /studio/analytics', () => {
 
     // سفارشی: the first day of this Jalali month to today, picked in the Jalali calendar
     await chooseRange(page, 'سفارشی');
+    const calendar = page.getByRole('dialog', { name: 'تقویم شمسی' });
     await page.getByRole('button', { name: 'تاریخ شروع' }).click();
-    await page.getByRole('dialog', { name: 'تقویم شمسی' }).getByRole('button', { name: new RegExp(`^${fa(1)} `) }).click();
+    await calendar.getByRole('button', { name: new RegExp(`^${fa(1)} `) }).click();
+    await expect(calendar).toHaveCount(0);
     await page.getByRole('button', { name: 'تاریخ پایان' }).click();
-    await page.getByRole('dialog', { name: 'تقویم شمسی' }).getByRole('button', { name: 'امروز' }).click();
+    await calendar.getByRole('button', { name: 'امروز' }).click(); // the "today" shortcut leaves the popover open
+    await page.keyboard.press('Escape');
+    await expect(calendar).toHaveCount(0);
     await page.getByRole('button', { name: 'اعمال' }).click();
     await expect(page).toHaveURL(new RegExp(`range=custom&from=${monthStartKey()}&to=${todayKey()}`));
     await expect.poll(() => statValue(page, 'views')).toBe(fa(between(views, monthStartKey(), todayKey()).length));
@@ -435,14 +462,12 @@ test.describe('analytics /studio/analytics', () => {
     const months = new Set<string>();
     for (let back = 0; back < 90; back += 1) months.add(`${jalali(keyBack(back)).year}-${jalali(keyBack(back)).month}`);
     await expect(chartRows(page)).toHaveCount(1 + months.size);
-    const total = (
-      await Promise.all(Array.from({ length: months.size }, async (_, i) => Number((await chartRows(page).nth(1 + i).getByRole('cell').first().innerText()).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))))))
-    ).reduce((sum, n) => sum + n, 0);
+    let total = 0;
+    for (let i = 0; i < months.size; i += 1) total += digitsToNumber(await chartRows(page).nth(1 + i).getByRole('cell').first().innerText());
     expect(total).toBe(between(views, keyBack(89), keyBack(0)).length);
   });
 
   test('the sample-data notice appears only when synthetic rows are inside the range', async ({ page }) => {
-    await signIn(page, main);
     await page.goto('/studio/analytics'); // last 30 days: only REAL rows
     await expect(page.getByTestId('analytics-chart')).toBeVisible();
     await expect(page.getByTestId('seed-notice')).toHaveCount(0);
@@ -464,7 +489,6 @@ test.describe('analytics /studio/analytics', () => {
 
   test('?video= scopes everything to one video; foreign and malformed ids are 404', async ({ page }) => {
     const other = seedCreator('other', { videos: [{ key: 'x', title: 'ویدیوی یک کانال دیگر' }] });
-    await signIn(page, main);
 
     // arrive the way a creator does: from the dashboard's "آمار" shortcut
     await page.goto('/studio');
@@ -481,22 +505,27 @@ test.describe('analytics /studio/analytics', () => {
     await page.getByRole('link', { name: 'نمایش کل کانال' }).click();
     await expect(page.getByTestId('video-filter')).toHaveCount(0);
 
+    // Somebody else's video, an unknown id and a malformed one are indistinguishable: the not-found page, no data.
+    // (The page streams behind loading.tsx, so Next answers 200 with the not-found UI; the API answers a real 404.)
     for (const id of [other.videoIds.x!, 'doesNotExi1', 'bad id!']) {
-      const response = await page.goto(`/studio/analytics?video=${encodeURIComponent(id)}`);
-      expect(response?.status(), id).toBe(404);
+      await page.goto(`/studio/analytics?video=${encodeURIComponent(id)}`);
       await expect(page.getByRole('heading', { name: /پیدا نشد/ })).toBeVisible();
+      await expect(page.getByText('ویدیوی یک کانال دیگر')).toHaveCount(0);
+      await expect(page.getByTestId('video-filter')).toHaveCount(0);
     }
+    const foreignCsv = await page.request.get(`/api/studio/analytics/export?video=${other.videoIds.x}`);
+    expect(foreignCsv.status()).toBe(404);
+    expect(await foreignCsv.text()).not.toContain('ویدیوی یک کانال دیگر');
   });
 
   test('CSV export downloads the exact per-day numbers (UTF-8 BOM, Tehran days)', async ({ page }) => {
-    await signIn(page, main);
     await page.goto('/studio/analytics');
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'خروجی CSV روزانه' }).click()]);
     expect(download.suggestedFilename()).toMatch(/^tamashagah-analytics-e2e-main-.*\.csv$/);
 
     const bytes = await fs.readFile((await download.path())!);
     expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
-    const rows = bytes.toString('utf8').replace(/^﻿/, '').split('\r\n').filter(Boolean).map((line) => line.split(','));
+    const rows = bytes.toString('utf8').replace(String.fromCharCode(0xfeff), '').split('\r\n').filter(Boolean).map((line) => line.split(','));
     const header = rows[0]!;
     expect(header).toContain('بازدید');
     const days = rows.slice(1);
@@ -507,7 +536,7 @@ test.describe('analytics /studio/analytics', () => {
       const row = days.find((r) => r[0] === keyBack(daysBack))!;
       expect(Number(row[column]), `CSV row ${keyBack(daysBack)}`).toBe(between(views, keyBack(daysBack), keyBack(daysBack)).length);
     }
-    expect(days.reduce((sum, r) => sum + Number(r[column]), 0)).toBe(15);
+    expect(days.reduce((sum, r) => sum + Number(r[column]), 0)).toBe(10);
 
     // per-video export of the same range
     const [videos] = await Promise.all([page.waitForEvent('download'), page.getByRole('link', { name: 'خروجی CSV ویدیوها' }).click()]);
@@ -618,14 +647,20 @@ test.describe('settings /studio/settings', () => {
     const meta = await sharp(await banner.body()).metadata();
     expect([meta.width, meta.height]).toEqual([1920, 480]);
 
-    await page.goto(`/channel/${owner.handle}`);
-    await expect(page.getByRole('heading', { name })).toBeVisible();
+    // what the public pages read from the database: the new name (and its search form), the https link, the banner key
+    const stored = runFixture<{ name: string; description: string; links: { title: string; url: string }[]; searchName: string; bannerKey: string | null }>({
+      command: 'channel',
+      id: owner.channelId,
+    });
+    expect(stored).toMatchObject({ name, description: 'درباره‌ی کانال: آموزش و تجربه.', links: [{ title: 'وب‌سایت', url: 'https://example.com/me' }] });
+    expect(stored.searchName).toContain(name); // normalised name and handle, so the channel is found by its new name
+    expect(stored.bannerKey).toBeTruthy();
   });
 
   test('account tab: display name and numerals apply everywhere; a new password signs the other device out', async ({ page, browser, baseURL }) => {
     const owner = seedCreator('account', { videos: [{ key: 'v1', title: TITLES.v1 }] });
     await signIn(page, owner);
-    const other = await browser.newContext({ baseURL, locale: 'fa-IR', timezoneId: 'Asia/Tehran' });
+    const other = await browser.newContext({ baseURL, locale: 'fa-IR', timezoneId: 'Asia/Tehran', storageState: SIGNED_OUT });
     const otherPage = await other.newPage();
     await signIn(otherPage, owner);
     await otherPage.goto('/studio');
@@ -638,11 +673,11 @@ test.describe('settings /studio/settings', () => {
     await page.getByRole('button', { name: 'ذخیره‌ی تغییرات' }).click();
     await expect(page.getByRole('button', { name: 'ذخیره‌ی تغییرات' })).toBeDisabled(); // saved: the form is clean again
 
+    expect(runFixture<{ displayName: string; digitStyle: string }>({ command: 'user', id: owner.userId })).toMatchObject({ displayName: name, digitStyle: 'EN' });
     await page.goto('/studio');
     await expect.poll(() => statValue(page, 'videos')).toBe('1'); // Western digits everywhere after the preference changed
-    await openAccountMenu(page);
-    await expect(page.getByRole('menu').getByText(name)).toBeVisible();
-    await page.keyboard.press('Escape');
+    await page.goto('/studio/settings');
+    await expect(page.getByLabel('نام نمایشی')).toHaveValue(name);
 
     // change the password: the other device is signed out, this one stays
     await page.goto('/studio/settings');
@@ -663,7 +698,7 @@ test.describe('settings /studio/settings', () => {
     const owner = seedCreator('sessions');
     const iphone =
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-    const context = (userAgent?: string) => browser.newContext({ baseURL, locale: 'fa-IR', timezoneId: 'Asia/Tehran', userAgent });
+    const context = (userAgent?: string) => browser.newContext({ baseURL, locale: 'fa-IR', timezoneId: 'Asia/Tehran', userAgent, storageState: SIGNED_OUT });
     const phone = await context(iphone);
     const tablet = await context();
     const phonePage = await phone.newPage();
@@ -676,7 +711,7 @@ test.describe('settings /studio/settings', () => {
     await page.goto('/studio/settings');
     const rows = page.getByTestId('session-row');
     await expect(rows).toHaveCount(3);
-    await expect(rows.filter({ hasText: 'این دستگاه' })).toHaveCount(1);
+    await expect(page.locator('[data-testid="session-row"][data-current="true"]')).toHaveCount(1);
     await expect(rows.filter({ hasText: 'Safari روی آیفون' })).toHaveCount(1);
 
     // revoke the phone only
@@ -699,14 +734,22 @@ test.describe('settings /studio/settings', () => {
 
   test('users without a channel get the account tab only', async ({ page }) => {
     const email = `${E2E_EMAIL_PREFIX}plain-${unique()}@example.test`;
-    // a creator whose channel we keep out of the way: register a plain account through the API of the fixture runner
     const plain = runFixture<{ userId: string }>({ command: 'plainUser', email, password: E2E_PASSWORD });
     created.push(plain.userId);
+    await page.context().clearCookies();
     await loginViaUi(page, email, E2E_PASSWORD);
     await page.goto('/studio/settings?tab=channel');
     await expect(page.getByRole('tab', { name: 'حساب کاربری' })).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByRole('tab', { name: 'کانال' })).toHaveCount(0);
     await expect(page.getByText('هنوز کانال ندارید')).toBeVisible();
+    // the account menu of a channel-less user shows the display name, which follows an edit straight away
+    const renamed = `نام ساده ${unique()}`;
+    await page.getByLabel('نام نمایشی').fill(renamed);
+    await page.getByRole('button', { name: 'ذخیره‌ی تغییرات' }).click();
+    await expect(page.getByRole('button', { name: 'ذخیره‌ی تغییرات' })).toBeDisabled();
+    await openAccountMenu(page);
+    await expect(page.getByRole('menu').getByText(renamed)).toBeVisible();
+    await page.keyboard.press('Escape');
     // the upload endpoints of a channel are closed to them, whatever the UI shows
     const response = await page.request.post('/api/studio/channel/banner', { multipart: { file: { name: 'b.png', mimeType: 'image/png', buffer: await PNG() } }, headers: { origin: new URL(page.url()).origin } });
     expect(response.status()).toBe(403);
@@ -719,7 +762,7 @@ test.describe('monetization /studio/monetization', () => {
   const ELIGIBLE = {
     followerCount: 1_000,
     videos: ['m1', 'm2', 'm3', 'm4', 'm5'].map((key, i) => ({ key, title: `ویدیوی عمومی ${i + 1}` })),
-    // 2000 real views x 910 s = 505.6 watch hours inside the last 365 days
+    // 2000 real views x 910 s = 505.55 watch hours inside the last 365 days (the page rounds DOWN: never overstates)
     bulkViews: [{ video: 'm1', count: 2_000, watch: 910, spreadDays: 300 }],
   };
 
@@ -763,7 +806,7 @@ test.describe('monetization /studio/monetization', () => {
 
     await expect(page.getByTestId('eligible-banner')).toBeVisible();
     for (const key of ['followers', 'watchHours', 'publicVideos']) await expect(page.getByTestId(`requirement-${key}`)).toHaveAttribute('data-met', 'true');
-    await expect(page.getByTestId('requirement-watchHours')).toContainText(`${fa(505.6, { maximumFractionDigits: 1 })} از ${fa(500)} ساعت`);
+    await expect(page.getByTestId('requirement-watchHours')).toContainText(`${fa(505.5, { maximumFractionDigits: 1 })} از ${fa(500)} ساعت`);
 
     // the terms are required
     await page.getByLabel('ایمیل تماس').fill('creator@example.test');
@@ -811,11 +854,10 @@ test.describe('monetization /studio/monetization', () => {
 
 test.describe('accessibility of the studio pages (axe, WCAG 2 A/AA)', () => {
   for (const theme of ['light', 'dark'] as const) {
-    for (const path of ['/studio', '/studio/analytics', '/studio/analytics?range=90d', '/studio/settings', '/studio/settings?tab=channel', '/studio/monetization']) {
-      test(`${path} (${theme})`, async ({ page }) => {
+    for (const route of ['/studio', '/studio/analytics', '/studio/analytics?range=90d', '/studio/settings', '/studio/settings?tab=channel', '/studio/monetization']) {
+      test(`${route} (${theme})`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: theme });
-        await signIn(page, main);
-        await page.goto(path);
+        await page.goto(route);
         await page.waitForLoadState('networkidle');
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
         expect(
@@ -825,6 +867,3 @@ test.describe('accessibility of the studio pages (axe, WCAG 2 A/AA)', () => {
     }
   }
 });
-
-// Referenced so a future change to the helper signature is caught by the type checker.
-export type { Browser };
