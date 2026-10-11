@@ -4,10 +4,12 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import {
+  AbortMultipartUploadCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListMultipartUploadsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -185,5 +187,37 @@ export class S3Storage implements StorageDriver {
     return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
       expiresIn: expiresInSeconds,
     });
+  }
+
+  async abortIncompleteUploads(prefix: string): Promise<number> {
+    assertSafeKey(prefix.replace(/\/$/, '') || 'x');
+    let aborted = 0;
+    let keyMarker: string | undefined;
+    let uploadIdMarker: string | undefined;
+    do {
+      const res = await this.client.send(
+        new ListMultipartUploadsCommand({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          KeyMarker: keyMarker,
+          UploadIdMarker: uploadIdMarker,
+        }),
+      );
+      for (const upload of res.Uploads ?? []) {
+        if (!upload.Key || !upload.UploadId) continue;
+        try {
+          await this.client.send(
+            new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: upload.Key, UploadId: upload.UploadId }),
+          );
+          aborted++;
+        } catch (error) {
+          // Already completed or aborted by somebody else (NoSuchUpload): nothing left to do.
+          if (!isNotFound(error) && (error as { name?: string }).name !== 'NoSuchUpload') throw error;
+        }
+      }
+      keyMarker = res.IsTruncated ? res.NextKeyMarker : undefined;
+      uploadIdMarker = res.IsTruncated ? res.NextUploadIdMarker : undefined;
+    } while (keyMarker || uploadIdMarker);
+    return aborted;
   }
 }
