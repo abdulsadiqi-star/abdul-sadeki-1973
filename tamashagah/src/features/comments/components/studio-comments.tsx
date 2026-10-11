@@ -315,11 +315,14 @@ function CommentRow({
   const canReply = row.status === 'APPROVED' || row.status === 'PENDING';
 
   const video = (
-    <Link href={`/watch/${row.video.id}` as Route} className="group/video flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-      <span className="relative block aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-muted md:w-28">
+    <Link
+      href={`/watch/${row.video.id}` as Route}
+      className="group/video flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:flex-col md:items-stretch md:gap-1.5"
+    >
+      <span className="relative block aspect-video w-24 shrink-0 overflow-hidden rounded-md bg-muted md:w-full">
         {row.video.posterUrl ? <img src={row.video.posterUrl} alt="" loading="lazy" className="size-full object-cover" /> : <PosterPlaceholder />}
       </span>
-      <span className="line-clamp-2 min-w-0 text-xs leading-5 text-muted-foreground group-hover/video:text-foreground md:hidden" dir="auto">
+      <span className="line-clamp-2 min-w-0 text-xs leading-5 text-muted-foreground group-hover/video:text-foreground" dir="auto">
         {row.video.title}
       </span>
     </Link>
@@ -327,7 +330,7 @@ function CommentRow({
 
   return (
     <li className={cn('rounded-xl border bg-card p-3 transition-colors sm:p-4', selected && 'border-primary/50 bg-accent/20', busy && 'pointer-events-none opacity-60')} aria-busy={busy} data-comment-id={row.id} data-status={row.status}>
-      <div className="flex items-start gap-3">
+      <div className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-3 md:grid-cols-[auto_auto_minmax(0,1fr)_11rem_auto]">
         <Checkbox className="mt-2" checked={selected} onCheckedChange={(v) => onSelect(v === true)} aria-label={`انتخاب دیدگاه ${row.author.name}`} />
         <ChannelAvatar name={row.author.name} src={row.author.avatarUrl} size="md" />
 
@@ -404,11 +407,11 @@ function CommentRow({
           )}
         </div>
 
-        <div className="hidden w-52 shrink-0 md:block">{video}</div>
+        <div className="col-span-4 row-start-2 md:col-span-1 md:col-start-4 md:row-start-1">{video}</div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="icon-sm" shape="pill" aria-label={`گزینه‌های دیدگاه ${row.author.name}`}>
+            <Button type="button" variant="ghost" size="icon-sm" shape="pill" className="col-start-4 row-start-1 md:col-start-5" aria-label={`گزینه‌های دیدگاه ${row.author.name}`}>
               <Ellipsis />
             </Button>
           </DropdownMenuTrigger>
@@ -449,8 +452,6 @@ function CommentRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-
-      <div className="mt-3 md:hidden">{video}</div>
     </li>
   );
 }
