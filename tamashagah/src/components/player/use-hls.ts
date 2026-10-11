@@ -195,6 +195,18 @@ export function useHls(options: Options): HlsController {
               else hls.startLoad();
             }, delay);
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            if (
+              data.details === Hls.ErrorDetails.MANIFEST_INCOMPATIBLE_CODECS_ERROR ||
+              data.details === Hls.ErrorDetails.BUFFER_INCOMPATIBLE_CODECS_ERROR ||
+              data.details === Hls.ErrorDetails.BUFFER_ADD_CODEC_ERROR
+            ) {
+              // The browser cannot decode ANY rendition (e.g. an open-source Chromium without H.264). Retrying or
+              // "recovering" cannot help, and waiting silently would leave a spinner forever: say so.
+              if (cancelled) return;
+              setError({ message: UNSUPPORTED_MESSAGE, retryable: false });
+              setStatus('unsupported');
+              return;
+            }
             if (!recoverMedia()) fail(mapMediaError(3));
           } else {
             fail({ message: mapMediaError(undefined).message, retryable: true });

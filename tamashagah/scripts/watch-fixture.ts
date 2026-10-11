@@ -13,6 +13,8 @@
  *   --duration=24           seconds
  *   --visibility=PUBLIC|UNLISTED|PRIVATE
  *   --comments-mode=OPEN|APPROVAL_REQUIRED|DISABLED   also updates the channel setting
+ *   --codec=vp9|h264        vp9 (default): VP9 + Opus in fMP4 — plays in Playwright's Chromium (it has no H.264 decoder);
+ *                           h264: H.264 + AAC in MPEG-TS like the production pipeline (needs Chrome / Safari / Firefox)
  *   --no-subtitles
  *   --json                  print machine-readable output (used by the e2e specs)
  */
@@ -35,6 +37,9 @@ async function main() {
     await db.channel.update({ where: { id: channel.id }, data: { commentsMode } });
   }
 
+  const codec = opt('codec') ?? 'vp9';
+  if (codec !== 'vp9' && codec !== 'h264') throw new Error('Invalid --codec (vp9 or h264)');
+
   const count = Math.max(1, Number(opt('count') ?? 1));
   const heights = (opt('heights') ?? '360,240').split(',').map(Number).filter(Boolean);
   const created = [];
@@ -50,6 +55,7 @@ async function main() {
         durationSeconds: Number(opt('duration') ?? 24),
         visibility: (opt('visibility') as Visibility | undefined) ?? 'PUBLIC',
         subtitles: !flag('no-subtitles'),
+        codec,
       }),
     );
   }

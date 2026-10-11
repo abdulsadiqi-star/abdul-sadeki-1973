@@ -6,13 +6,17 @@
  * layout the pipeline documents in `src/lib/storage/keys.ts`:
  *
  *   videos/<id>/hls/master.m3u8
- *   videos/<id>/hls/<h>p/index.m3u8 + seg_00001.ts ...
+ *   videos/<id>/hls/<h>p/index.m3u8 + seg_00000.m4s (+ init.mp4)  — or seg_00000.ts with `codec: 'h264'`
  *   videos/<id>/thumbs/auto_N.jpg, poster_<token>.jpg
  *   videos/<id>/subs/<lang>.vtt
  *
  * Sources are ffmpeg `lavfi` generators (a moving test pattern with a running clock + a quiet tone), so no
  * third-party media is needed and seeking is visually verifiable (the clock in the picture jumps with the
  * playhead).
+ *
+ * Codec: the Chromium that ships with Playwright (and every other open-source Chromium build) has NO H.264 / AAC
+ * decoder, so the default fixture is VP9 + Opus in fragmented MP4 — playable in every Chromium and Firefox.
+ * `codec: 'h264'` writes what the production pipeline emits (H.264 + AAC in MPEG-TS) for real-browser checks.
  *
  * Runtime: Node + ffmpeg only (no Next.js imports) — it runs under tsx and inside Vitest.
  */
@@ -29,6 +33,8 @@ import type { Visibility } from '@/generated/prisma/enums';
 
 const execFileAsync = promisify(execFile);
 
+export type FixtureCodec = 'vp9' | 'h264';
+
 export type HlsFixtureOptions = {
   channelId: string;
   /** Defaults to a fresh 11-char id. */
@@ -42,6 +48,8 @@ export type HlsFixtureOptions = {
   /** Rendition ladder (default 360p + 240p so quality switching can be tested). */
   heights?: number[];
   segmentSeconds?: number;
+  /** `vp9` (default): VP9 + Opus in fMP4, decodable everywhere incl. Playwright's Chromium. `h264`: H.264 + AAC in MPEG-TS. */
+  codec?: FixtureCodec;
   /** Write fa/en WebVTT tracks + SUBTITLE assets (default true). */
   subtitles?: boolean;
   visibility?: Visibility;
@@ -61,7 +69,11 @@ export type HlsFixtureResult = {
 
 const widthFor = (height: number) => Math.round((height * 16) / 9 / 2) * 2;
 const bitrateFor = (height: number) => (height >= 1080 ? 4_500 : height >= 720 ? 2_200 : height >= 480 ? 1_100 : height >= 360 ? 650 : 350);
-const codecFor = (height: number) => (height >= 1080 ? 'avc1.4d4028' : height >= 720 ? 'avc1.4d401f' : 'avc1.4d401e');
+/** RFC 6381 codec string(s) of a rendition for the master playlist. */
+const codecsFor = (height: number, codec: FixtureCodec) =>
+  codec === 'vp9'
+    ? `${height >= 1080 ? 'vp09.00.41.08' : height >= 720 ? 'vp09.00.31.08' : height >= 360 ? 'vp09.00.30.08' : 'vp09.00.21.08'},opus`
+    : `${height >= 1080 ? 'avc1.4d4028' : height >= 720 ? 'avc1.4d401f' : 'avc1.4d401e'},mp4a.40.2`;
 
 async function ffmpeg(bin: string, args: string[]): Promise<void> {
   try {
@@ -78,20 +90,39 @@ async function renderRendition(opts: {
   height: number;
   duration: number;
   segmentSeconds: number;
+  codec: FixtureCodec;
 }): Promise<void> {
-  const { bin, dir, height, duration, segmentSeconds } = opts;
+  const { bin, dir, height, duration, segmentSeconds, codec } = opts;
   const fps = 25;
   await fs.mkdir(dir, { recursive: true });
+  // Keyframes on the segment boundary in EVERY rendition so adaptive switching is seamless.
+  const gop = ['-g', String(fps * segmentSeconds), '-keyint_min', String(fps * segmentSeconds)];
+  const hls = ['-f', 'hls', '-hls_time', String(segmentSeconds), '-hls_playlist_type', 'vod'];
+
+  if (codec === 'vp9') {
+    await ffmpeg(bin, [
+      '-f', 'lavfi', '-i', `testsrc2=size=${widthFor(height)}x${height}:rate=${fps}:duration=${duration}`,
+      '-f', 'lavfi', '-i', `sine=frequency=330:sample_rate=48000:duration=${duration}`,
+      '-af', 'volume=0.04',
+      '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-b:v', `${bitrateFor(height)}k`,
+      '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-lag-in-frames', '0', '-auto-alt-ref', '0',
+      ...gop,
+      '-c:a', 'libopus', '-b:a', '32k', '-ac', '2',
+      ...hls, '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-hls_flags', 'independent_segments',
+      '-hls_segment_filename', path.join(dir, 'seg_%05d.m4s'), path.join(dir, 'index.m3u8'),
+    ]);
+    return;
+  }
+
   await ffmpeg(bin, [
     '-f', 'lavfi', '-i', `testsrc2=size=${widthFor(height)}x${height}:rate=${fps}:duration=${duration}`,
     '-f', 'lavfi', '-i', `sine=frequency=330:sample_rate=44100:duration=${duration}`,
     '-af', 'volume=0.04',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-profile:v', 'main', '-pix_fmt', 'yuv420p',
     '-b:v', `${bitrateFor(height)}k`, '-maxrate', `${Math.round(bitrateFor(height) * 1.2)}k`, '-bufsize', `${bitrateFor(height) * 2}k`,
-    // Keyframes on the segment boundary in EVERY rendition so adaptive switching is seamless.
-    '-g', String(fps * segmentSeconds), '-keyint_min', String(fps * segmentSeconds), '-sc_threshold', '0',
+    ...gop, '-sc_threshold', '0',
     '-c:a', 'aac', '-b:a', '48k', '-ac', '2',
-    '-f', 'hls', '-hls_time', String(segmentSeconds), '-hls_playlist_type', 'vod', '-hls_segment_type', 'mpegts',
+    ...hls, '-hls_segment_type', 'mpegts',
     '-hls_segment_filename', path.join(dir, 'seg_%05d.ts'), path.join(dir, 'index.m3u8'),
   ]);
 }
@@ -130,6 +161,7 @@ export async function createHlsFixtureVideo(options: HlsFixtureOptions): Promise
   const id = options.id ?? newVideoId();
   const title = options.title ?? `ویدیوی آزمایشی ${id.slice(0, 4)}`;
   const withSubtitles = options.subtitles ?? true;
+  const codec = options.codec ?? 'vp9';
 
   const channel = await db.channel.findUniqueOrThrow({ where: { id: options.channelId }, select: { name: true } });
   const work = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-hls-'));
@@ -137,7 +169,7 @@ export async function createHlsFixtureVideo(options: HlsFixtureOptions): Promise
 
   try {
     for (const height of heights) {
-      await renderRendition({ bin, dir: path.join(work, `${height}p`), height, duration, segmentSeconds });
+      await renderRendition({ bin, dir: path.join(work, `${height}p`), height, duration, segmentSeconds, codec });
     }
     const posterHeight = Math.max(...heights);
     await fs.mkdir(path.join(work, 'thumbs'), { recursive: true });
@@ -156,7 +188,7 @@ export async function createHlsFixtureVideo(options: HlsFixtureOptions): Promise
       '#EXTM3U',
       '#EXT-X-VERSION:3',
       ...heights.flatMap((h) => [
-        `#EXT-X-STREAM-INF:BANDWIDTH=${Math.round(bitrateFor(h) * 1.1 * 1000) + 48_000},AVERAGE-BANDWIDTH=${bitrateFor(h) * 1000 + 48_000},RESOLUTION=${widthFor(h)}x${h},CODECS="${codecFor(h)},mp4a.40.2",FRAME-RATE=25.000`,
+        `#EXT-X-STREAM-INF:BANDWIDTH=${Math.round(bitrateFor(h) * 1.1 * 1000) + 48_000},AVERAGE-BANDWIDTH=${bitrateFor(h) * 1000 + 48_000},RESOLUTION=${widthFor(h)}x${h},CODECS="${codecsFor(h, codec)}",FRAME-RATE=25.000`,
         `${h}p/index.m3u8`,
       ]),
       '',
@@ -216,7 +248,7 @@ export async function createHlsFixtureVideo(options: HlsFixtureOptions): Promise
               width: widthFor(h),
               height: h,
               bitrateKbps: bitrateFor(h),
-              codec: 'h264',
+              codec: codec === 'vp9' ? 'vp9' : 'h264',
               label: `${h}p`,
             })),
             ...autoFiles.map((_, i) => ({ kind: 'THUMBNAIL' as const, storageKey: keys.autoThumb(id, i + 1), mimeType: 'image/jpeg' })),
