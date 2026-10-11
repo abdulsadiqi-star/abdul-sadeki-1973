@@ -15,8 +15,9 @@ process.env.MAIL_FILE_DIR = path.join(os.tmpdir(), `tg-mailbox-${process.pid}`);
 process.env.STORAGE_DRIVER = 'fs';
 process.env.STORAGE_FS_ROOT = path.join(os.tmpdir(), `tg-storage-${process.pid}`);
 // Dedicated Redis database for tests (rate-limit counters, queues) — flushed before every test.
+// TEST_REDIS_DB lets parallel checkouts use different databases (default 15).
 const redisUrl = new URL(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379');
-redisUrl.pathname = '/15';
+redisUrl.pathname = `/${process.env.TEST_REDIS_DB ?? '15'}`;
 process.env.REDIS_URL = redisUrl.toString();
 
 // Next.js request-scoped APIs → in-memory request context.

@@ -57,6 +57,12 @@ worker/                    background jobs (imports lib + features/*/service.ts 
 | Labels | `labels`, `common` from `@/lib/i18n/fa` | Enum → Persian label maps. Add new shared labels here. |
 | Media URLs | `mediaUrl(key)`, `hlsMasterUrl(id)` from `@/lib/media-url` | |
 | IDs | `newVideoId()`, `randomToken()`, `sha256Hex()` from `@/lib/ids` | |
+| Like / follow / watch-later | `setLike`, `setFollow`, `setWatchLater`, `getViewerState` (`@/features/engagement/service`); actions `toggleLikeAction` etc.; `LikeButton`, `FollowButton`, `SaveButton` (`@/features/engagement/components/*`) | Idempotent, counters in the same transaction. Use these everywhere (watch page, shorts, channel, library). |
+| Recommendations | `getRelatedVideos`, `getTrendingVideos` from `@/features/recommendations` | Signatures are stable; internals are improved by the discovery feature. |
+| Image uploads | `processImage`, `readImageFile`, `sniffImageType` from `@/lib/images` | sharp: validates by decoding, strips EXIF, re-encodes (webp/jpeg). Never store the original bytes. |
+| Jalali date inputs | `JalaliDatePicker`, `JalaliDateTimeInput` from `@/components/forms/jalali-date-picker` | Values are `Date` instants (start of Tehran day / exact time). |
+| Confirmations | `ConfirmDialog` from `@/components/confirm-dialog` | Async-aware destructive confirmation. |
+| Test helpers | `createUser/createChannel/createVideo(state)/createCategory`, `loginAs(userId)`, `requestContext`, `lastTokenFor` | `tests/helpers/*` |
 
 `src/lib/{env,db,redis,logger,storage,queue,format,persian,jalali,ids,errors,rate-limit,validation,permissions,media-url}`
 and `features/notifications/service.ts` are shared with the worker: **no `next/*`, no `server-only` imports there.**

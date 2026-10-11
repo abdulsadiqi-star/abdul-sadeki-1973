@@ -30,7 +30,8 @@
     "db:studio": "prisma studio",
     "seed:media": "tsx --env-file-if-exists=.env scripts/seed-media.ts",
     "postinstall": "prisma generate",
-    "setup:env": "node scripts/init-env.mjs"
+    "setup:env": "node scripts/init-env.mjs",
+    "test:components": "vitest run --project component"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -71,6 +72,7 @@
     "react-hook-form": "^7.90.0",
     "recharts": "^3.10.1",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "tus-js-client": "^4.3.1",

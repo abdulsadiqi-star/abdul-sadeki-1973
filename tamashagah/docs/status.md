@@ -14,6 +14,9 @@ Legend: ✅ done & verified · 🟡 in progress · ⬜ not started · 🧩 place
 | App shell: header, collapsible right sidebar, mobile nav, studio shell, notifications bell, user menu | ✅ | screenshots desktop/mobile, e2e |
 | Auth: register/login/logout, e-mail verification, reset, change password, sessions, roles, channel creation | ✅ | 37 integration tests + 16 e2e (desktop+mobile) |
 | Proxy gate for /studio and /admin (deep-link `next=`) | ✅ | e2e |
+| Core engagement (like/follow/watch-later services, actions, buttons) | ✅ | 15 integration tests |
+| Image sanitizing (`lib/images`), Jalali date/time picker, ConfirmDialog | ✅ | unit + component tests |
+| Recommendations: public-only related/trending (foundation version) | ✅ | integration test |
 
 ## Routes
 

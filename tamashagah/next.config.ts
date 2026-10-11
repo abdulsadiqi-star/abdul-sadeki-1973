@@ -58,6 +58,7 @@ const nextConfig: NextConfig = {
     'ioredis',
     'nodemailer',
     'pg',
+    'sharp',
     '@aws-sdk/client-s3',
     '@aws-sdk/lib-storage',
     '@aws-sdk/s3-request-presigner',
