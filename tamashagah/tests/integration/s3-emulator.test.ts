@@ -38,7 +38,7 @@ const { ENDPOINT, BUCKET } = vi.hoisted(() => {
 import { db } from '@/lib/db';
 import { resetEnvCache } from '@/lib/env';
 import { closeQueues } from '@/lib/queue';
-import { contentTypeForKey, getStorage, keys, S3Storage } from '@/lib/storage';
+import { contentTypeForKey, getStorage, keys, type S3Storage } from '@/lib/storage';
 import { closeTusServer } from '@/features/uploads/tus';
 import { clearVideoAccessCache } from '@/features/videos/media-access';
 import { GET as mediaGet } from '@/app/media/[...key]/route';
