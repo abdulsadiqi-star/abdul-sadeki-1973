@@ -6,12 +6,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import sharp from 'sharp';
 import { db } from '@/lib/db';
 import { newVideoId } from '@/lib/ids';
 import { buildVideoSearchFields } from '@/lib/persian';
 import { getStorage, keys } from '@/lib/storage';
 import type { Prisma } from '@/generated/prisma/client';
 import { generateFixture, type FixtureName } from '../../scripts/make-test-video.mjs';
+import { createVideo, type VideoState } from './factories';
 
 const execFileAsync = promisify(execFile);
 
@@ -86,4 +88,39 @@ export async function ffprobeJson(file: string): Promise<{
 export function storagePath(key: string): string {
   const root = process.env.STORAGE_FS_ROOT!;
   return path.join(root, key);
+}
+
+
+/** A solid-colour JPEG of the given size (stand-in for a generated thumbnail). */
+export function solidJpeg(width: number, height: number, shade: number): Promise<Buffer> {
+  return sharp({ create: { width, height, channels: 3, background: { r: shade, g: 90, b: 160 } } })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+}
+
+/**
+ * A READY video with the assets the pipeline would have produced (3 candidate thumbnails, a poster, a master
+ * playlist) written to the real test storage — without running ffmpeg, so studio tests stay fast.
+ */
+export async function createReadyVideo(
+  channelId: string,
+  options: { state?: VideoState; title?: string; width?: number; height?: number; kind?: 'VIDEO' | 'SHORT'; durationSeconds?: number } = {},
+) {
+  const video = await createVideo(channelId, { state: options.state ?? 'draft', title: options.title, kind: options.kind, durationSeconds: options.durationSeconds });
+  const width = options.width ?? 1280;
+  const height = options.height ?? 720;
+  const storage = getStorage();
+  const id = video.id;
+  for (const n of [1, 2, 3]) await storage.put(keys.autoThumb(id, n), await solidJpeg(width, height, n * 60), { contentType: 'image/jpeg' });
+  const posterKey = keys.poster(id, 'initialtoken');
+  await storage.put(posterKey, await solidJpeg(width, height, 120), { contentType: 'image/jpeg' });
+  await storage.put(keys.hlsMaster(id), '#EXTM3U\n#EXT-X-VERSION:3\n', { contentType: 'application/vnd.apple.mpegurl' });
+  await db.mediaAsset.createMany({
+    data: [
+      { videoId: id, kind: 'HLS_MASTER', storageKey: keys.hlsMaster(id) },
+      ...[1, 2, 3].map((n) => ({ videoId: id, kind: 'THUMBNAIL' as const, storageKey: keys.autoThumb(id, n), mimeType: 'image/jpeg', width, height, label: String(n) })),
+      { videoId: id, kind: 'POSTER', storageKey: posterKey, mimeType: 'image/jpeg', width, height, isDefault: true, meta: { source: 'auto', index: 2 } },
+    ],
+  });
+  return db.video.update({ where: { id }, data: { posterKey, hlsMasterKey: keys.hlsMaster(id), width, height } });
 }
