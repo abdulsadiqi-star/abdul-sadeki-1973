@@ -1,0 +1,864 @@
+// =============================================================================
+// تماشاگاه — Prisma schema (PostgreSQL 16, Prisma 7)
+//
+// Conventions
+//  - IDs: cuid() strings, except Video.id which is an 11-char base62 public id
+//    generated in application code (see src/lib/ids.ts).
+//  - All timestamps are UTC. Day-bucketed analytics use Asia/Tehran (see
+//    src/lib/analytics/time.ts).
+//  - Denormalized counters (Video.viewCount, Channel.followerCount, ...) are
+//    updated transactionally and reconciled by the worker (stats.reconcile).
+//  - Full-text search: Video.searchTitle / searchBody hold *normalized* Persian
+//    text (see src/lib/persian.ts). Video.searchVector is a GENERATED column
+//    created in the migration SQL (Prisma only knows it as Unsupported).
+//  - Raw SQL: identifiers are camelCase, so quote them: "Video"."viewCount".
+//    Always cast aggregates to ::int / ::float8 to avoid BigInt/Decimal values.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  USER // registered user
+  CREATOR // user who owns a channel (assigned when the channel is created)
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum DigitStyle {
+  FA // ۱۲۳
+  EN // 123
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum VideoKind {
+  VIDEO
+  SHORT
+}
+
+enum ProcessingStatus {
+  AWAITING_UPLOAD // record exists, bytes not fully received yet
+  QUEUED // upload finished, waiting for the worker
+  PROCESSING // worker is transcoding
+  READY // HLS renditions are available
+  FAILED
+}
+
+enum PublishStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+}
+
+enum Visibility {
+  PUBLIC
+  UNLISTED
+  PRIVATE
+}
+
+enum AssetKind {
+  SOURCE
+  HLS_MASTER
+  RENDITION
+  THUMBNAIL // auto-generated candidate frames
+  POSTER // the selected / custom poster
+  SUBTITLE
+}
+
+enum JobStatus {
+  QUEUED
+  ACTIVE
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum JobStage {
+  PROBE
+  TRANSCODE
+  THUMBNAILS
+  PACKAGE
+  FINALIZE
+}
+
+enum CommentStatus {
+  PENDING // waiting for creator approval
+  APPROVED // publicly visible
+  REJECTED
+  SPAM
+  DELETED
+}
+
+enum CommentsMode {
+  OPEN // publish immediately (spam heuristics may still hold a comment)
+  APPROVAL_REQUIRED // every comment waits for the creator
+  DISABLED
+}
+
+enum PlaylistKind {
+  CUSTOM
+  WATCH_LATER
+}
+
+enum NotificationType {
+  NEW_COMMENT
+  COMMENT_PENDING
+  COMMENT_REPLY
+  COMMENT_APPROVED
+  VIDEO_LIKED
+  NEW_FOLLOWER
+  VIDEO_READY
+  VIDEO_FAILED
+  VIDEO_PUBLISHED
+  NEW_VIDEO
+  MODERATION
+  MONETIZATION_UPDATE
+  VERIFICATION_UPDATE
+  TICKET_REPLY
+  SYSTEM
+}
+
+enum ReportTarget {
+  VIDEO
+  COMMENT
+  CHANNEL
+}
+
+enum ReportReason {
+  SPAM
+  ABUSE
+  HATE
+  VIOLENCE
+  ADULT
+  COPYRIGHT
+  MISINFORMATION
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  ACTIONED
+  DISMISSED
+}
+
+enum ModerationActionType {
+  COMMENT_APPROVE
+  COMMENT_REJECT
+  COMMENT_SPAM
+  COMMENT_DELETE
+  COMMENT_RESTORE
+  VIDEO_TAKEDOWN
+  VIDEO_RESTORE
+  VIDEO_DELETE
+  CHANNEL_SUSPEND
+  CHANNEL_RESTORE
+  CHANNEL_VERIFY
+  CHANNEL_UNVERIFY
+  USER_SUSPEND
+  USER_RESTORE
+  USER_ROLE_CHANGE
+  CHANNEL_USER_BLOCK
+  CHANNEL_USER_UNBLOCK
+  REPORT_DISMISS
+  MONETIZATION_APPROVE
+  MONETIZATION_REJECT
+}
+
+enum MonetizationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum TicketStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
+
+enum TicketCategory {
+  ACCOUNT
+  UPLOAD
+  PLAYBACK
+  COPYRIGHT
+  MONETIZATION
+  REPORT_ABUSE
+  OTHER
+}
+
+enum DeviceType {
+  DESKTOP
+  MOBILE
+  TABLET
+  TV
+  OTHER
+}
+
+/// Distinguishes events recorded from real usage from development seed data.
+enum DataSource {
+  REAL
+  SEED
+}
+
+enum FollowEventType {
+  FOLLOW
+  UNFOLLOW
+}
+
+// ----------------------------------------------------------------------------
+// Identity & access
+// ----------------------------------------------------------------------------
+
+model User {
+  id              String     @id @default(cuid())
+  /// Always stored lowercase + trimmed.
+  email           String     @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String
+  displayName     String
+  avatarKey       String?
+  role            UserRole   @default(USER)
+  status          UserStatus @default(ACTIVE)
+  digitStyle      DigitStyle @default(FA)
+  timezone        String     @default("Asia/Tehran")
+  notifyByEmail   Boolean    @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  channel            Channel?
+  sessions           Session[]
+  emailTokens        EmailToken[]
+  follows            Follow[]
+  followEvents       FollowEvent[]
+  likes              VideoLike[]
+  comments           Comment[]            @relation("CommentAuthor")
+  repliesReceived    Comment[]            @relation("CommentReplyTo")
+  playlists          Playlist[]
+  watchHistory       WatchHistory[]
+  viewEvents         ViewEvent[]
+  notifications      Notification[]       @relation("NotificationRecipient")
+  notificationsActed Notification[]       @relation("NotificationActor")
+  reportsFiled       Report[]             @relation("ReportReporter")
+  reportsHandled     Report[]             @relation("ReportHandler")
+  moderationActions  ModerationAction[]   @relation("ModerationActor")
+  moderationTargets  ModerationAction[]   @relation("ModerationTargetUser")
+  channelBlocks      ChannelBlock[]
+  tickets            SupportTicket[]
+  ticketMessages     TicketMessage[]
+  monetizationReviews MonetizationApplication[] @relation("MonetizationReviewer")
+  verificationReviews VerificationRequest[]     @relation("VerificationReviewer")
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  /// SHA-256 (hex) of the random cookie token. The raw token is never stored.
+  tokenHash  String    @unique
+  userAgent  String?
+  /// HMAC of the client IP (never the raw IP).
+  ipHash     String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailToken {
+  id        String         @id @default(cuid())
+  userId    String
+  type      EmailTokenType
+  /// SHA-256 (hex) of the emailed token.
+  tokenHash String         @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+// ----------------------------------------------------------------------------
+// Channels & catalog
+// ----------------------------------------------------------------------------
+
+model Channel {
+  id                String       @id @default(cuid())
+  ownerId           String       @unique
+  /// Lowercase latin handle used in /channel/[handle]. 3–30 chars [a-z0-9_.-].
+  handle            String       @unique
+  name              String
+  description       String       @default("")
+  avatarKey         String?
+  bannerKey         String?
+  isVerified        Boolean      @default(false)
+  verifiedAt        DateTime?
+  followerCount     Int          @default(0)
+  commentsMode      CommentsMode @default(OPEN)
+  defaultVisibility Visibility   @default(PUBLIC)
+  /// [{ "title": "...", "url": "https://..." }]
+  links             Json?
+  /// Normalized name + handle for search (src/lib/persian.ts).
+  searchName        String       @default("")
+  suspendedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  owner                    User                      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  videos                   Video[]
+  followers                Follow[]
+  followEvents             FollowEvent[]
+  blockedUsers             ChannelBlock[]
+  viewEvents               ViewEvent[]
+  notifications            Notification[]
+  reports                  Report[]
+  moderationActions        ModerationAction[]
+  monetizationApplications MonetizationApplication[]
+  verificationRequests     VerificationRequest[]
+
+  @@index([followerCount(sort: Desc)])
+  @@index([searchName(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  nameFa      String
+  nameEn      String?
+  description String?
+  /// Name of a lucide icon (see src/components/category-icon.tsx).
+  icon        String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  videos Video[]
+
+  @@index([sortOrder])
+}
+
+// ----------------------------------------------------------------------------
+// Videos & media
+// ----------------------------------------------------------------------------
+
+model Video {
+  /// 11-char base62 public id, e.g. "aB3dE5gH7jK".
+  id          String    @id
+  channelId   String
+  categoryId  String?
+  kind        VideoKind @default(VIDEO)
+  title       String
+  description String    @default("")
+  tags        String[]  @default([])
+  language    String    @default("fa")
+
+  processingStatus ProcessingStatus @default(AWAITING_UPLOAD)
+  publishStatus    PublishStatus    @default(DRAFT)
+  visibility       Visibility       @default(PUBLIC)
+  /// When true the worker publishes the video as soon as processing succeeds.
+  publishOnReady   Boolean          @default(true)
+  publishedAt      DateTime?
+  scheduledFor     DateTime?
+  /// Set by moderators; hides the video everywhere except for owner/moderators.
+  takedownAt       DateTime?
+  takedownReason   String?
+  commentsEnabled  Boolean          @default(true)
+  ageRestricted    Boolean          @default(false)
+
+  // Source / probe results
+  durationSeconds  Float?
+  width            Int?
+  height           Int?
+  originalFilename String?
+  /// Storage key of the uploaded original (private; never served).
+  sourceKey        String?
+  sourceSizeBytes  BigInt?
+  sourceMime       String?
+  /// Storage key of the active poster/thumbnail.
+  posterKey        String?
+  /// Storage key of the HLS master playlist (set when READY).
+  hlsMasterKey     String?
+  failureReason    String?
+
+  // Denormalized counters
+  viewCount    Int @default(0)
+  likeCount    Int @default(0)
+  /// Number of APPROVED comments (top-level + replies).
+  commentCount Int @default(0)
+
+  // Search (see header comment)
+  searchTitle  String                   @default("")
+  searchBody   String                   @default("")
+  /// GENERATED ALWAYS AS (...) STORED — created in the init migration SQL. The
+  /// dbgenerated() text must match what Postgres reports, otherwise Prisma sees drift.
+  searchVector Unsupported("tsvector")? @default(dbgenerated("(setweight(to_tsvector('simple'::regconfig, COALESCE(\"searchTitle\", ''::text)), 'A'::\"char\") || setweight(to_tsvector('simple'::regconfig, COALESCE(\"searchBody\", ''::text)), 'C'::\"char\"))"))
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channel       Channel            @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  category      Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  assets        MediaAsset[]
+  jobs          TranscodeJob[]
+  comments      Comment[]
+  likes         VideoLike[]
+  playlistItems PlaylistItem[]
+  watchHistory  WatchHistory[]
+  viewEvents    ViewEvent[]
+  notifications Notification[]
+  reports       Report[]
+  moderation    ModerationAction[]
+
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([channelId, publishStatus, processingStatus])
+  @@index([publishStatus, visibility, processingStatus, publishedAt(sort: Desc)])
+  @@index([categoryId, publishedAt(sort: Desc)])
+  @@index([kind, publishedAt(sort: Desc)])
+  @@index([viewCount(sort: Desc)])
+  @@index([scheduledFor])
+  @@index([processingStatus, createdAt])
+  @@index([tags], type: Gin)
+  @@index([searchVector], type: Gin)
+  @@index([searchTitle(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model MediaAsset {
+  id          String    @id @default(cuid())
+  videoId     String
+  kind        AssetKind
+  /// Object key (or key prefix for RENDITION assets) inside the storage bucket.
+  storageKey  String
+  mimeType    String?
+  sizeBytes   BigInt?
+  width       Int?
+  height      Int?
+  bitrateKbps Int?
+  codec       String?
+  /// Subtitles: BCP-47 language tag, e.g. "fa", "en".
+  language    String?
+  /// Human label: "720p", "فارسی".
+  label       String?
+  isDefault   Boolean   @default(false)
+  meta        Json?
+  createdAt   DateTime  @default(now())
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([videoId, kind, storageKey])
+  @@index([videoId, kind])
+}
+
+model TranscodeJob {
+  id            String    @id @default(cuid())
+  videoId       String
+  status        JobStatus @default(QUEUED)
+  stage         JobStage?
+  /// 0..100
+  progress      Int       @default(0)
+  attempt       Int       @default(0)
+  maxAttempts   Int       @default(3)
+  queueJobId    String?
+  error         String?
+  /// Sanitized ffprobe summary of the source.
+  probe         Json?
+  /// Rendition ladder chosen for this source (never upscaled).
+  renditionPlan Json?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
+}
+
+// ----------------------------------------------------------------------------
+// Engagement
+// ----------------------------------------------------------------------------
+
+model Comment {
+  id             String        @id @default(cuid())
+  videoId        String
+  authorId       String
+  /// Direct parent (null for top-level comments).
+  parentId       String?
+  /// Top-level comment of the thread (null for top-level comments). Replies to
+  /// replies are flattened under the root and carry replyToUserId.
+  rootId         String?
+  replyToUserId  String?
+  body           String
+  status         CommentStatus @default(APPROVED)
+  isPinned       Boolean       @default(false)
+  /// Number of APPROVED direct+indirect replies (only meaningful on roots).
+  replyCount     Int           @default(0)
+  reportCount    Int           @default(0)
+  moderatedById  String?
+  moderatedAt    DateTime?
+  moderationNote String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  video       Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  author      User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  replyToUser User?     @relation("CommentReplyTo", fields: [replyToUserId], references: [id], onDelete: SetNull)
+  parent      Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[] @relation("CommentThread")
+  reports     Report[]
+  notifications Notification[]
+  moderation  ModerationAction[]
+
+  @@index([videoId, status, createdAt(sort: Desc)])
+  @@index([videoId, rootId, createdAt])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([parentId])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model VideoLike {
+  userId    String
+  videoId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, videoId])
+  @@index([videoId, createdAt])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Current follow state (one row per follower/channel pair).
+model Follow {
+  userId    String
+  channelId String
+  /// Receive NEW_VIDEO notifications for this channel.
+  notify    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@id([userId, channelId])
+  @@index([channelId, createdAt])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Append-only follow/unfollow log used for follower-growth analytics.
+model FollowEvent {
+  id        String          @id @default(cuid())
+  channelId String
+  userId    String?
+  type      FollowEventType
+  source    DataSource      @default(REAL)
+  createdAt DateTime        @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([channelId, createdAt])
+}
+
+model Playlist {
+  /// WATCH_LATER lists use the deterministic id "wl_<userId>".
+  id          String       @id @default(cuid())
+  ownerId     String
+  kind        PlaylistKind @default(CUSTOM)
+  title       String
+  description String       @default("")
+  visibility  Visibility   @default(PRIVATE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  owner User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  items PlaylistItem[]
+
+  @@index([ownerId, kind])
+}
+
+model PlaylistItem {
+  id         String   @id @default(cuid())
+  playlistId String
+  videoId    String
+  position   Int
+  addedAt    DateTime @default(now())
+
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  video    Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, videoId])
+  @@index([playlistId, position])
+}
+
+model WatchHistory {
+  userId          String
+  videoId         String
+  /// Last playback position, used for resume.
+  positionSeconds Float    @default(0)
+  /// Cumulative seconds actually watched.
+  watchedSeconds  Float    @default(0)
+  completed       Boolean  @default(false)
+  firstWatchedAt  DateTime @default(now())
+  lastWatchedAt   DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, videoId])
+  @@index([userId, lastWatchedAt(sort: Desc)])
+}
+
+/// One row per counted viewing session. Heartbeats raise watchSeconds.
+model ViewEvent {
+  id           String     @id @default(cuid())
+  videoId      String
+  /// Denormalized for cheap channel-level analytics.
+  channelId    String
+  userId       String?
+  /// HMAC(secret, anonymous cookie id) — used to de-duplicate views.
+  viewerKey    String
+  watchSeconds Float      @default(0)
+  device       DeviceType @default(OTHER)
+  /// Referrer host, or "direct".
+  referrer     String?
+  source       DataSource @default(REAL)
+  createdAt    DateTime   @default(now())
+  lastBeatAt   DateTime   @default(now())
+
+  video   Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([videoId, createdAt])
+  @@index([channelId, createdAt])
+  @@index([viewerKey, videoId, createdAt])
+  @@index([createdAt])
+  @@index([source])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  /// Recipient.
+  userId    String
+  type      NotificationType
+  actorId   String?
+  channelId String?
+  videoId   String?
+  commentId String?
+  title     String
+  body      String?
+  /// Internal path to open, e.g. "/watch/aB3dE5gH7jK".
+  href      String?
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user    User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor   User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  channel Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  video   Video?   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// ----------------------------------------------------------------------------
+// Moderation
+// ----------------------------------------------------------------------------
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String?
+  targetType  ReportTarget
+  videoId     String?
+  commentId   String?
+  channelId   String?
+  reason      ReportReason
+  details     String?
+  status      ReportStatus @default(OPEN)
+  handledById String?
+  handledAt   DateTime?
+  resolution  String?
+  createdAt   DateTime     @default(now())
+
+  reporter  User?    @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  handler   User?    @relation("ReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  video     Video?   @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  channel   Channel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  moderationActions ModerationAction[]
+
+  /// A user can report a given target once (NULLs are distinct in Postgres).
+  @@unique([reporterId, videoId])
+  @@unique([reporterId, commentId])
+  @@unique([reporterId, channelId])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([targetType, status])
+}
+
+model ModerationAction {
+  id         String               @id @default(cuid())
+  /// Moderator/admin — or the channel owner for comment moderation.
+  actorId    String?
+  type       ModerationActionType
+  videoId    String?
+  commentId  String?
+  channelId  String?
+  /// Affected user (e.g. a blocked commenter, a suspended account).
+  targetUserId String?
+  reportId   String?
+  reason     String?
+  meta       Json?
+  createdAt  DateTime             @default(now())
+
+  actor      User?    @relation("ModerationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  targetUser User?    @relation("ModerationTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  video      Video?   @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  comment    Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  channel    Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  report     Report?  @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+}
+
+/// Commenters blocked by a channel owner (the "spam writers" list).
+model ChannelBlock {
+  channelId String
+  userId    String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+}
+
+// ----------------------------------------------------------------------------
+// Creator programs
+// ----------------------------------------------------------------------------
+
+/// Application to the monetization program. Holds NO financial data; revenue
+/// and payouts will be provided by a future billing integration.
+model MonetizationApplication {
+  id              String             @id @default(cuid())
+  channelId       String
+  status          MonetizationStatus @default(DRAFT)
+  acceptedTermsAt DateTime?
+  contactEmail    String?
+  /// { followers, totalViews, watchHours, videoCount, capturedAt } at submit.
+  statsSnapshot   Json?
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  decisionNote    String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  channel  Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation("MonetizationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([status, submittedAt])
+}
+
+/// Request for the verified-channel badge (see /verification).
+model VerificationRequest {
+  id           String             @id @default(cuid())
+  channelId    String
+  status       VerificationStatus @default(SUBMITTED)
+  message      String
+  /// [{ "title": "...", "url": "https://..." }] proving identity / notability.
+  evidenceLinks Json?
+  reviewedAt   DateTime?
+  reviewedById String?
+  decisionNote String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  channel  Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation("VerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+}
+
+// ----------------------------------------------------------------------------
+// Support
+// ----------------------------------------------------------------------------
+
+model SupportTicket {
+  id        String         @id @default(cuid())
+  /// Human-friendly ticket number shown to users.
+  number    Int            @unique @default(autoincrement())
+  userId    String?
+  email     String
+  subject   String
+  category  TicketCategory @default(OTHER)
+  status    TicketStatus   @default(OPEN)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user     User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages TicketMessage[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  authorId  String?
+  isStaff   Boolean  @default(false)
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+}

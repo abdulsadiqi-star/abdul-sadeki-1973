@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# build outputs
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# generated
+src/generated/
+
+# env files (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# local runtime data (storage, mailbox, logs, seed credentials)
+.data/
+
+# tests
+playwright-report/
+test-results/
+blob-report/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+.vercel
