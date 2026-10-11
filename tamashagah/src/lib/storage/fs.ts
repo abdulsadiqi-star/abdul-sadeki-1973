@@ -151,4 +151,9 @@ export class FsStorage implements StorageDriver {
   async presignGet(): Promise<string | null> {
     return null;
   }
+
+  /** Nothing to abort on a plain file system (tus' file store writes in place). */
+  async abortIncompleteUploads(): Promise<number> {
+    return 0;
+  }
 }

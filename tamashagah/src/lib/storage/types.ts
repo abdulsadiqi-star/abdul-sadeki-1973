@@ -49,4 +49,9 @@ export interface StorageDriver {
   list(prefix: string, limit?: number): Promise<StoredObjectInfo[]>;
   /** Short-lived direct download URL. `null` when the driver cannot presign (fs). */
   presignGet(key: string, expiresInSeconds: number): Promise<string | null>;
+  /**
+   * Abort unfinished multipart uploads whose key starts with `prefix` (S3 keeps the uploaded parts — and bills
+   * for them — until the upload is completed or aborted). Returns how many were aborted; always 0 for fs.
+   */
+  abortIncompleteUploads(prefix: string): Promise<number>;
 }

@@ -1,11 +1,12 @@
 import { Readable } from 'node:stream';
 import type { NextRequest } from 'next/server';
 import { getCurrentUser, toActor } from '@/lib/auth/session';
-import { db } from '@/lib/db';
+import { env } from '@/lib/env';
 import { parseRangeHeader } from '@/lib/http-range';
 import { logger } from '@/lib/logger';
-import { canViewVideo, type VideoAccessInfo } from '@/lib/permissions';
+import { canViewVideo } from '@/lib/permissions';
 import { assertSafeKey, getStorage, isPublicMediaKey } from '@/lib/storage';
+import { loadVideoAccess } from '@/features/videos/media-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,47 +19,28 @@ export const dynamic = 'force-dynamic';
  *    listed/unlisted videos are open, drafts/private/taken-down videos are only
  *    served to the owner and moderators. Everyone else gets a plain 404.
  *  - Supports HTTP Range and ETag/If-None-Match (required for HLS + seeking).
+ *  - MEDIA_DELIVERY=redirect (s3 only): playlists, posters and subtitles are still streamed by the app, but HLS
+ *    SEGMENTS are answered with a 302 to a short-lived presigned URL, so the heavy bytes never pass through Node.
+ *    The visibility check above has already happened by then, so the rules are unchanged. The bucket needs a CORS
+ *    rule for the site origin (hls.js fetches segments with XHR) — see docs/features/media.md.
  */
-
-type Access = VideoAccessInfo;
-const accessCache = new Map<string, { at: number; value: Access | null }>();
-const ACCESS_TTL_MS = 10_000;
-
-async function loadAccess(videoId: string): Promise<Access | null> {
-  const hit = accessCache.get(videoId);
-  if (hit && Date.now() - hit.at < ACCESS_TTL_MS) return hit.value;
-  const row = await db.video.findUnique({
-    where: { id: videoId },
-    select: {
-      channelId: true,
-      visibility: true,
-      publishStatus: true,
-      processingStatus: true,
-      takedownAt: true,
-      channel: { select: { suspendedAt: true } },
-    },
-  });
-  const value: Access | null = row
-    ? {
-        channelId: row.channelId,
-        visibility: row.visibility,
-        publishStatus: row.publishStatus,
-        processingStatus: row.processingStatus,
-        takedownAt: row.takedownAt,
-        channelSuspendedAt: row.channel.suspendedAt,
-      }
-    : null;
-  if (accessCache.size > 5_000) accessCache.clear();
-  accessCache.set(videoId, { at: Date.now(), value });
-  return value;
-}
 
 const notFound = () => new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 
-function cacheControlFor(key: string, mode: 'public-asset' | 'open' | 'unlisted' | 'restricted'): string {
+type Mode = 'public-asset' | 'open' | 'unlisted' | 'restricted';
+
+/** HLS media segments (the bulk of the bytes). Everything else is small and stays behind the app. */
+const SEGMENT_KEY = /\/hls\/[^/]+\/[^/]+\.(?:ts|m4s|mp4|aac)$/;
+
+/** Lifetime of a presigned segment URL. Players request segments right after the redirect, so a few minutes suffice. */
+const PRESIGN_SECONDS = 300;
+
+function cacheControlFor(key: string, mode: Mode): string {
   if (mode === 'restricted') return 'private, no-store';
   if (mode === 'unlisted') return 'private, max-age=300';
   if (key.endsWith('.m3u8')) return 'public, max-age=30, stale-while-revalidate=60';
+  // Subtitles can be replaced under the same key: keep them fresh (ETag revalidation handles the rest).
+  if (key.endsWith('.vtt')) return 'public, max-age=60';
   if (mode === 'public-asset' || /\/(seg_|init|poster_)/.test(key)) return 'public, max-age=31536000, immutable';
   return 'public, max-age=3600';
 }
@@ -75,9 +57,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
   const target = isPublicMediaKey(key);
   if (!target) return notFound();
 
-  let mode: 'public-asset' | 'open' | 'unlisted' | 'restricted' = 'public-asset';
+  let mode: Mode = 'public-asset';
   if ('videoId' in target) {
-    const access = await loadAccess(target.videoId);
+    const access = await loadVideoAccess(target.videoId);
     if (!access) return notFound();
     if (canViewVideo(null, access)) {
       mode = access.visibility === 'PUBLIC' ? 'open' : 'unlisted';
@@ -90,6 +72,21 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ key: string
 
   const storage = getStorage();
   try {
+    if (env.MEDIA_DELIVERY === 'redirect' && storage.kind === 's3' && SEGMENT_KEY.test(key)) {
+      const url = await storage.presignGet(key, PRESIGN_SECONDS);
+      if (url) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: url,
+            // The redirect may be reused by the browser cache, but never longer than the signature lives.
+            'Cache-Control': mode === 'restricted' ? 'private, no-store' : `private, max-age=${PRESIGN_SECONDS - 60}`,
+            'X-Content-Type-Options': 'nosniff',
+          },
+        });
+      }
+    }
+
     const head = await storage.head(key);
     if (!head) return notFound();
 
