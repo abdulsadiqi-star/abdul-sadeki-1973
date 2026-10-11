@@ -46,14 +46,15 @@ async function buildWorld(browser: Browser, info: WorkerInfo): Promise<World> {
 
 const test = base.extend<{ asCreator: Page }, { world: World }>({
   world: [
-    async ({ browser }, use, workerInfo) => {
-      await use(await buildWorld(browser, workerInfo));
+    // (Playwright's fixture callback is called `provide` here: the name `use` trips react-hooks/rules-of-hooks.)
+    async ({ browser }, provide, workerInfo) => {
+      await provide(await buildWorld(browser, workerInfo));
     },
     { scope: 'worker', timeout: 360_000 },
   ],
-  asCreator: async ({ browser, world }, use, testInfo) => {
+  asCreator: async ({ browser, world }, provide, testInfo) => {
     const { context, page } = await newActorPage(browser, testInfo, world.creator.state);
-    await use(page);
+    await provide(page);
     await context.close();
   },
 });
@@ -365,7 +366,7 @@ test.describe('player', () => {
     await pausePlayback(page, player);
 
     // A Persian layout reports key = "ن" for the physical K key; the shortcut still works.
-    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', key: 'ن', bubbles: true, cancelable: true })));
+    await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', key: 'ن', bubbles: true, cancelable: true })));
     await expect(player).toHaveAttribute('data-playing', 'true');
     await pausePlayback(page, player);
 
@@ -548,17 +549,21 @@ test.describe('engagement and comments', () => {
     });
 
     await test.step('like: exact counter, survives a reload, can be undone', async () => {
+      // (the buttons are disabled while the server action is in flight; "enabled" = the server has answered)
       const like = page.getByRole('button', { name: 'پسندیدن', exact: true });
-      await like.click();
       const unlike = page.getByRole('button', { name: 'لغو پسندیدن' });
+      await like.click();
       await expect(unlike).toHaveAttribute('aria-pressed', 'true');
+      await expect(unlike).toBeEnabled();
       await expect(unlike).toContainText(faNumber(1));
       await page.reload();
-      await expect(page.getByRole('button', { name: 'لغو پسندیدن' })).toContainText(faNumber(1));
-      await page.getByRole('button', { name: 'لغو پسندیدن' }).click();
-      await expect(page.getByRole('button', { name: 'پسندیدن', exact: true })).toContainText(faNumber(0));
-      await page.getByRole('button', { name: 'پسندیدن', exact: true }).click(); // end liked: the creator is notified
-      await expect(page.getByRole('button', { name: 'لغو پسندیدن' })).toContainText(faNumber(1));
+      await expect(unlike).toContainText(faNumber(1));
+      await unlike.click();
+      await expect(like).toContainText(faNumber(0));
+      await expect(like).toBeEnabled();
+      await like.click(); // end liked: the creator is notified
+      await expect(unlike).toContainText(faNumber(1));
+      await expect(unlike).toBeEnabled();
     });
 
     await test.step('follow: exact follower count, survives a reload', async () => {
@@ -567,6 +572,7 @@ test.describe('engagement and comments', () => {
       await expect(page.getByTestId('follower-count')).toContainText(faNumber(0));
       await follow.click();
       await expect(follow).toHaveAttribute('aria-pressed', 'true');
+      await expect(follow).toBeEnabled();
       await expect(page.getByTestId('follower-count')).toContainText(faNumber(1));
       await page.reload();
       await expect(page.getByRole('button', { name: /^دنبال/ })).toHaveAttribute('aria-pressed', 'true');
@@ -578,6 +584,7 @@ test.describe('engagement and comments', () => {
       await expect(save).toHaveAttribute('aria-pressed', 'false');
       await save.click();
       await expect(save).toHaveAttribute('aria-pressed', 'true');
+      await expect(save).toBeEnabled();
       await expect(page.getByText(/بعداً تماشا/).first()).toBeVisible();
 
       await page.getByRole('button', { name: /فهرست پخش/ }).click();
@@ -591,19 +598,22 @@ test.describe('engagement and comments', () => {
     });
 
     await test.step('report the video (once)', async () => {
+      const dialog = page.getByRole('dialog'); // (its name changes from "گزارش ویدیو" to "گزارش شما ثبت شد" on success)
       await page.getByRole('button', { name: /^گزارش$/ }).click();
-      const dialog = page.getByRole('dialog', { name: /گزارش ویدیو/ });
       await dialog.getByRole('button', { name: /ارسال گزارش/ }).click();
-      await expect(dialog.getByText(/دلیل گزارش را انتخاب/)).toBeVisible(); // a reason is required
+      await expect(dialog.getByText('دلیل گزارش را انتخاب کنید.', { exact: true })).toBeVisible(); // a reason is required
       await dialog.getByRole('radio').first().check();
       await dialog.getByRole('button', { name: /ارسال گزارش/ }).click();
-      await expect(dialog.getByText(/گزارش شما ثبت شد/).first()).toBeVisible();
-      await dialog.getByRole('button', { name: 'بستن' }).first().click();
+      await expect(dialog.getByText('گزارش شما ثبت شد', { exact: true })).toBeVisible();
+      await dialog.getByRole('status').getByRole('button', { name: 'بستن' }).click();
+      await expect(dialog).toBeHidden();
+
       await page.getByRole('button', { name: /^گزارش$/ }).click();
-      await page.getByRole('dialog', { name: /گزارش ویدیو/ }).getByRole('radio').first().check();
-      await page.getByRole('dialog', { name: /گزارش ویدیو/ }).getByRole('button', { name: /ارسال گزارش/ }).click();
-      await expect(page.getByRole('dialog', { name: /گزارش ویدیو/ }).getByText(/قبلاً/)).toBeVisible(); // reporting twice is refused
+      await dialog.getByRole('radio').first().check();
+      await dialog.getByRole('button', { name: /ارسال گزارش/ }).click();
+      await expect(dialog.getByText(/قبلاً/)).toBeVisible(); // reporting twice is refused
       await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
     });
 
     await test.step('typing a comment never triggers a player shortcut', async () => {
@@ -636,6 +646,23 @@ test.describe('engagement and comments', () => {
       } finally {
         await visitor.context.close();
       }
+    });
+
+    await test.step('a second comment is rejected by the creator and is gone for everybody', async () => {
+      const rejectedText = `این دیدگاه را سازنده رد می‌کند (${testInfo.project.name})`;
+      await page.getByRole('textbox', { name: 'نوشتن دیدگاه' }).fill(rejectedText);
+      await page.getByRole('button', { name: 'ارسال دیدگاه' }).click();
+      await expect(page.getByRole('listitem').filter({ hasText: rejectedText }).getByText('در انتظار تأیید سازنده')).toBeVisible();
+
+      await asCreator.goto('/studio/comments?tab=pending');
+      const row = asCreator.locator('li[data-comment-id]').filter({ hasText: rejectedText });
+      await row.getByRole('button', { name: `گزینه‌های دیدگاه ${viewer.name}` }).click();
+      await asCreator.getByRole('menuitem', { name: /رد کردن/ }).click();
+      await expect(asCreator.getByText('دیدگاه رد شد.')).toBeVisible();
+      await expect(row).toHaveCount(0);
+
+      await page.reload();
+      await expect(page.getByText(rejectedText)).toHaveCount(0);
     });
 
     await test.step('the creator sees it under "تأیید نشده" and publishes it from /studio/comments', async () => {
