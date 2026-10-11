@@ -18,7 +18,7 @@ import { S3Store, type MetadataValue } from '@tus/s3-store';
 import { getCurrentUser, toActor, type CurrentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { env } from '@/lib/env';
-import { AppError, Errors, isAppError } from '@/lib/errors';
+import { Errors, isAppError, type AppError } from '@/lib/errors';
 import { isVideoId, newVideoId } from '@/lib/ids';
 import { logger } from '@/lib/logger';
 import { ownsChannel } from '@/lib/permissions';

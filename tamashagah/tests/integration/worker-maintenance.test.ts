@@ -5,7 +5,7 @@
 import fs from 'node:fs/promises';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Job } from 'bullmq';
-import { db } from '@/lib/db';
+import { db, type Prisma } from '@/lib/db';
 import { newVideoId, randomToken, sha256Hex } from '@/lib/ids';
 import { closeQueues, enqueueVideoProcessing, getQueue, JOB_NAMES } from '@/lib/queue';
 import { getStorage, keys } from '@/lib/storage';
@@ -112,7 +112,7 @@ describe('stale uploads', () => {
 describe('auth tables', () => {
   it('purges expired / revoked sessions and expired / used e-mail tokens, keeps live ones', async () => {
     const user = await createUser();
-    const session = (over: Partial<Parameters<typeof db.session.create>[0]['data']>) =>
+    const session = (over: Partial<Prisma.SessionUncheckedCreateInput>) =>
       db.session.create({
         data: { userId: user.id, tokenHash: sha256Hex(randomToken()), expiresAt: new Date(Date.now() + 86_400_000), ...over },
       });
@@ -121,7 +121,7 @@ describe('auth tables', () => {
     await session({ revokedAt: minutesAgo(5) });
     await session({ createdAt: new Date(Date.now() - 200 * 86_400_000) }); // beyond the absolute lifetime
 
-    const token = (over: Partial<Parameters<typeof db.emailToken.create>[0]['data']>) =>
+    const token = (over: Partial<Prisma.EmailTokenUncheckedCreateInput>) =>
       db.emailToken.create({
         data: { userId: user.id, type: 'VERIFY_EMAIL', tokenHash: sha256Hex(randomToken()), expiresAt: new Date(Date.now() + 86_400_000), ...over },
       });
