@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { ChannelAvatar } from '@/components/channel-avatar';
 import { useFormatter } from '@/components/providers/format-provider';
 import { VerifiedBadge } from '@/components/verified-badge';
-import { PosterPlaceholder } from '@/components/video/video-card';
+import { PosterImage } from '@/components/video/video-card';
 import { removeFromPlaylistAction } from '@/features/library/actions';
 import type { PlaylistItemView } from '@/features/library/queries';
 import { cn } from '@/lib/utils';
@@ -49,7 +49,7 @@ export function PlaylistItems({
               {f.number(startIndex + i)}
             </span>
             <Link href={href} tabIndex={-1} aria-hidden="true" className="relative block aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-44">
-              {video.posterUrl ? <img src={video.posterUrl} alt="" width={640} height={360} loading="lazy" decoding="async" className="size-full object-cover" /> : <PosterPlaceholder />}
+              <PosterImage src={video.posterUrl} />
               {video.durationSeconds != null && (
                 <span className="absolute end-1.5 bottom-1.5 rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-white tabular-nums">{f.duration(video.durationSeconds)}</span>
               )}

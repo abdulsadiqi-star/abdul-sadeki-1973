@@ -7,7 +7,7 @@ import { ChannelAvatar } from '@/components/channel-avatar';
 import { HighlightedText } from '@/components/search/highlighted-text';
 import { useFormatter } from '@/components/providers/format-provider';
 import { VerifiedBadge } from '@/components/verified-badge';
-import { PosterPlaceholder } from '@/components/video/video-card';
+import { PosterImage } from '@/components/video/video-card';
 import type { VideoResult } from '@/features/search/queries';
 import { cn } from '@/lib/utils';
 
@@ -30,19 +30,13 @@ export function SearchResultItem({ result, priority = false }: { result: VideoRe
           isShort ? 'aspect-[9/16] w-24 sm:w-32' : 'aspect-video w-40 sm:w-72',
         )}
       >
-        {card.posterUrl ? (
-          <img
-            src={card.posterUrl}
-            alt=""
-            width={isShort ? 360 : 640}
-            height={isShort ? 640 : 360}
-            loading={priority ? 'eager' : 'lazy'}
-            decoding="async"
-            className="size-full object-cover transition-transform duration-300 group-hover/result:scale-[1.04]"
-          />
-        ) : (
-          <PosterPlaceholder />
-        )}
+        <PosterImage
+          src={card.posterUrl}
+          width={isShort ? 360 : 640}
+          height={isShort ? 640 : 360}
+          priority={priority}
+          className="transition-transform duration-300 group-hover/result:scale-[1.04]"
+        />
         {isShort ? (
           <span className="absolute end-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-medium text-white">
             <Zap aria-hidden="true" className="size-3 fill-current" /> شورتس

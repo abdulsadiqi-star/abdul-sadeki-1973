@@ -2,6 +2,7 @@
  * Ranked lists: related ("up next"), trending and "recommended for you".
  * Candidate generation hits the database; ranking itself is pure (see ./scoring.ts) and deterministic for a given `now`.
  */
+import { unstable_cache } from 'next/cache';
 import { db } from '@/lib/db';
 import { clamp } from '@/lib/utils';
 import { toVideoCard, type VideoCardData } from '@/features/videos/card';
@@ -12,6 +13,7 @@ import {
   candidateSelect,
   daysAgo,
   dedupeRows,
+  hydrateCards,
   loadBaselineCandidates,
   loadCandidates,
   loadHotVideoIds,
@@ -146,17 +148,44 @@ async function rankTrending(opts: TrendingOptions): Promise<Ranked[]> {
   );
 }
 
-/** Ids only (what the home page caches); callers must hydrate through `hydrateCards`, which re-checks visibility. */
+/** Ids only, always computed (what the home page caches as a whole); hydrate through `hydrateCards`, which re-checks visibility. */
 export async function getTrendingVideoIds(opts: TrendingOptions = {}): Promise<string[]> {
   return (await rankTrending(opts)).map((r) => r.id);
+}
+
+export const LIST_CACHE_SECONDS = 60;
+
+/**
+ * Ranking is the expensive part of a list page, so the ORDERED IDS are cached for everyone (`unstable_cache`, 60 s, tag
+ * "videos"; the arguments are part of the key). Cards are always hydrated fresh through `publicVideoWhere`, so a video that
+ * is taken down, made private or whose channel is suspended disappears at once even while its id is still in a cached list.
+ */
+const cachedTrendingIds = unstable_cache(
+  async (kind: 'VIDEO' | 'SHORT' | null, categoryId: string | null, limit: number, days: number): Promise<string[]> =>
+    getTrendingVideoIds({ kind: kind ?? undefined, categoryId: categoryId ?? undefined, limit, days }),
+  ['discovery:trending:v1'],
+  { revalidate: LIST_CACHE_SECONDS, tags: ['videos'] },
+);
+
+/** `getTrendingVideoIds` through the 60 s cache, for page renders (`now` is not an option: a cached list has no "now"). */
+export function getCachedTrendingIds(opts: Omit<TrendingOptions, 'now'> = {}): Promise<string[]> {
+  return cachedTrendingIds(
+    opts.kind ?? null,
+    opts.categoryId ?? null,
+    clamp(Math.trunc(opts.limit ?? 12), 1, 100),
+    clamp(Math.trunc(opts.days ?? DEFAULT_TRENDING_DAYS), 1, 90),
+  );
 }
 
 /**
  * Trending: recent activity (views + likes inside the rolling window, REAL and SEED events alike) combined with
  * recency, engagement and a small popularity prior. Weights: `TRENDING_WEIGHTS`. Public videos only.
+ * Without `now` the ordering comes from the 60 s id cache (fresh cards); with `now` it is computed on the spot, which
+ * is what tests and jobs need for a deterministic result.
  */
 export async function getTrendingVideos(opts: TrendingOptions = {}): Promise<VideoCardData[]> {
-  return (await rankTrending(opts)).map((r) => toVideoCard(r.row));
+  if (opts.now) return (await rankTrending(opts)).map((r) => toVideoCard(r.row));
+  return hydrateCards(await getCachedTrendingIds(opts));
 }
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { Zap } from 'lucide-react';
-import { PosterPlaceholder } from '@/components/video/video-card';
+import { PosterImage } from '@/components/video/video-card';
 import { useFormatter } from '@/components/providers/format-provider';
 import type { VideoCardData } from '@/features/videos/card';
 import { cn } from '@/lib/utils';
@@ -13,19 +13,7 @@ export function ShortCard({ video, className, priority = false }: { video: Video
   const f = useFormatter();
   return (
     <article className={cn('group/short relative aspect-[9/16] overflow-hidden rounded-xl bg-muted', className)}>
-      {video.posterUrl ? (
-        <img
-          src={video.posterUrl}
-          alt=""
-          width={360}
-          height={640}
-          loading={priority ? 'eager' : 'lazy'}
-          decoding="async"
-          className="size-full object-cover transition-transform duration-300 group-hover/short:scale-[1.04]"
-        />
-      ) : (
-        <PosterPlaceholder />
-      )}
+      <PosterImage src={video.posterUrl} width={360} height={640} priority={priority} className="transition-transform duration-300 group-hover/short:scale-[1.04]" />
       <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/75 to-transparent" />
       <Zap aria-hidden="true" className="absolute end-2 top-2 size-4 fill-white text-white drop-shadow" />
       <div className="absolute inset-x-0 bottom-0 p-2.5 text-white">

@@ -4,7 +4,7 @@
  * `getRelatedVideos` / `getTrendingVideos` keep the signatures of the foundation version (the watch page and shorts
  * already depend on them); the options only grew (`days`, `categoryId`, `now`). No machine learning is involved or claimed.
  */
-export { getPersonalizedFeed, getRelatedVideos, getTrendingVideoIds, getTrendingVideos } from './ranking';
+export { getCachedTrendingIds, getPersonalizedFeed, getRelatedVideos, getTrendingVideoIds, getTrendingVideos } from './ranking';
 export type { PersonalizedOptions, RelatedOptions, TrendingOptions } from './ranking';
 export { getContinueWatching, getFollowedLatest, getHomeFeed } from './home';
 export type { ContinueWatchingItem, HomeCategoryRow, HomeFeed } from './home';

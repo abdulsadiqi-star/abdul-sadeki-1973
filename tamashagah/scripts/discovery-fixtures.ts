@@ -2,8 +2,10 @@
  * Development / test fixtures for the discovery pages (no transcoding pipeline needed):
  *
  *  - abstract poster JPEGs rendered with sharp (SVG → JPEG) and written through the storage driver
- *  - a REAL playable portrait HLS clip rendered with ffmpeg `lavfi` (5 s, one 640p-style rendition) for the shorts feed
- *  - `createMediaVideo()` which inserts a READY/PUBLISHED video row (searchable, with poster and optional HLS)
+ *  - REAL playable HLS clips rendered with ffmpeg from the SAME artwork as the poster (slow zoom/pan + a quiet sine tone):
+ *    6–8 s landscape with 360p + 240p renditions for videos, 5 s portrait for shorts. H.264/AAC in MPEG-TS by default.
+ *  - `createMediaVideo()` which inserts a READY/PUBLISHED video row (searchable, with poster and optional HLS) and stores the
+ *    REAL duration/size of the clip it rendered (the duration badge always equals the HLS duration)
  *
  * Used by `scripts/seed-discovery.ts`, the e2e specs and the screenshot runs. Not imported by application code.
  */
@@ -137,10 +139,15 @@ export async function storePoster(videoId: string, jpeg: Buffer): Promise<string
 }
 
 // ---------------------------------------------------------------------------
-// HLS (shorts)
+// HLS clips (videos and shorts)
 // ---------------------------------------------------------------------------
 
 export type HlsFixture = { dir: string; files: string[] };
+
+/** A rendered clip plus the facts measured from its own playlists (so the database can store real values). */
+export type ClipFixture = HlsFixture & { durationSeconds: number; width: number; height: number };
+
+export type ClipKind = 'VIDEO' | 'SHORT';
 
 /**
  * `h264`: MPEG-TS + H.264/AAC (what the real pipeline produces; plays in every normal browser).
@@ -153,7 +160,7 @@ export function defaultHlsCodec(): HlsCodec {
   return process.env.SEED_HLS_CODEC === 'vp9' ? 'vp9' : 'h264';
 }
 
-const fixtureCache = new Map<string, Promise<HlsFixture>>();
+const clipCache = new Map<string, Promise<ClipFixture>>();
 
 async function listFiles(root: string, rel = ''): Promise<string[]> {
   const out: string[] = [];
@@ -165,49 +172,108 @@ async function listFiles(root: string, rel = ''): Promise<string[]> {
   return out.sort();
 }
 
+/** Clip length: 6–8 s for videos (stable per artwork, so the demo shows a few different badges), 5 s for shorts. */
+export function clipSeconds(artwork: string, kind: ClipKind): number {
+  return kind === 'SHORT' ? 5 : 6 + Math.floor(seededRng(`clip-length:${artwork}`)() * 3);
+}
+
+/** Read the highest-bandwidth variant of a master playlist: its resolution and the summed `#EXTINF` duration. */
+async function inspectHls(dir: string): Promise<{ durationSeconds: number; width: number; height: number }> {
+  const master = await fs.readFile(path.join(dir, 'master.m3u8'), 'utf8');
+  const lines = master.split('\n');
+  let best: { bandwidth: number; width: number; height: number; uri: string } | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const info = /^#EXT-X-STREAM-INF:.*BANDWIDTH=(\d+).*RESOLUTION=(\d+)x(\d+)/.exec(lines[i]!);
+    const uri = lines[i + 1]?.trim();
+    if (!info || !uri) continue;
+    const candidate = { bandwidth: Number(info[1]), width: Number(info[2]), height: Number(info[3]), uri };
+    if (!best || candidate.bandwidth > best.bandwidth) best = candidate;
+  }
+  if (!best) throw new Error('rendered master playlist has no variants');
+  const media = await fs.readFile(path.join(dir, best.uri), 'utf8');
+  const durationSeconds = [...media.matchAll(/^#EXTINF:([\d.]+)/gm)].reduce((sum, m) => sum + Number(m[1]), 0);
+  if (!(durationSeconds > 0)) throw new Error('rendered media playlist has no duration');
+  return { durationSeconds: Math.round(durationSeconds * 1000) / 1000, width: best.width, height: best.height };
+}
+
 /**
- * Render a portrait (360×640) HLS clip with audio using ffmpeg `lavfi`: master.m3u8 + `640p/index.m3u8` + segments.
- * Cached per seed/codec for the lifetime of the process (a fixture is copied under many video ids).
+ * Render an HLS clip from the poster artwork `artwork` (the very same SVG art `renderPoster(artwork)` draws, just larger):
+ * a slow zoom/pan over it with a quiet sine tone, two renditions (landscape 640×360 + 426×240, portrait 360×640 + 240×426),
+ * master.m3u8 + `<rendition>/index.m3u8` + segments. Cached per artwork/kind/length/codec for the lifetime of the process,
+ * so a clip is encoded once however many videos share it.
  */
-export function renderShortHls(seed: string, opts: { seconds?: number; codec?: HlsCodec } = {}): Promise<HlsFixture> {
-  const seconds = opts.seconds ?? 5;
+export function renderClip(opts: { artwork: string; kind?: ClipKind; seconds?: number; codec?: HlsCodec }): Promise<ClipFixture> {
+  const kind = opts.kind ?? 'VIDEO';
+  const seconds = opts.seconds ?? clipSeconds(opts.artwork, kind);
   const codec = opts.codec ?? defaultHlsCodec();
-  const cacheKey = `${seed}:${seconds}:${codec}`;
-  let promise = fixtureCache.get(cacheKey);
+  const cacheKey = `${opts.artwork}:${kind}:${seconds}:${codec}`;
+  let promise = clipCache.get(cacheKey);
   if (!promise) {
-    promise = (async () => {
-      const rng = seededRng(`hls:${seed}`);
-      const color = () => hslToHex(Math.floor(rng() * 360), 70, 45).replace('#', '0x');
-      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-hls-'));
-      await fs.mkdir(path.join(dir, '640p'), { recursive: true });
-      const inputs = [
-        '-f', 'lavfi', '-i', `gradients=s=360x640:r=24:d=${seconds}:speed=0.04:c0=${color()}:c1=${color()}:c2=${color()}:nb_colors=3:seed=${Math.floor(rng() * 1000)}`,
-        '-f', 'lavfi', '-i', `sine=frequency=${180 + Math.floor(rng() * 200)}:duration=${seconds}:sample_rate=48000`,
-      ];
-      const encode =
-        codec === 'vp9'
-          ? ['-c:v', 'libvpx-vp9', '-b:v', '300k', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-g', '48', '-keyint_min', '48', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-b:a', '48k', '-ac', '1']
-          : ['-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p', '-g', '48', '-keyint_min', '48', '-sc_threshold', '0', '-b:v', '420k', '-maxrate', '480k', '-bufsize', '900k', '-c:a', 'aac', '-b:a', '48k', '-ac', '1'];
-      const segments =
-        codec === 'vp9'
-          ? ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', path.join(dir, '%v/seg_%05d.m4s')]
-          : ['-hls_segment_filename', path.join(dir, '%v/seg_%05d.ts')];
-      await run(env.FFMPEG_PATH, [
-        '-v', 'error', '-y',
-        ...inputs,
-        ...encode,
-        '-shortest',
-        '-f', 'hls', '-hls_time', '2', '-hls_playlist_type', 'vod',
-        ...segments,
-        '-master_pl_name', 'master.m3u8',
-        '-var_stream_map', 'v:0,a:0,name:640p',
-        path.join(dir, '%v/index.m3u8'),
-      ]);
-      return { dir, files: await listFiles(dir) };
-    })();
-    fixtureCache.set(cacheKey, promise);
+    promise = encodeClip(opts.artwork, kind, seconds, codec);
+    clipCache.set(cacheKey, promise);
   }
   return promise;
+}
+
+async function encodeClip(artwork: string, kind: ClipKind, seconds: number, codec: HlsCodec): Promise<ClipFixture> {
+  const portrait = kind === 'SHORT';
+  const fps = 24;
+  const frames = seconds * fps;
+  const [w0, h0, w1, h1] = portrait ? [360, 640, 240, 426] : [640, 360, 426, 240];
+  const rng = seededRng(`clip:${artwork}`);
+
+  // Ken Burns: zoom in or out and drift, differently per artwork so neighbouring tiles do not all move the same way.
+  const zoomIn = rng() > 0.4;
+  const [z0, z1] = zoomIn ? [1, 1.16] : [1.16, 1];
+  const [px0, px1, py0, py1] = [rng(), rng(), rng(), rng()];
+  const lerp = (a: number, b: number) => `${a.toFixed(3)}+(${(b - a).toFixed(3)})*on/${frames}`;
+  const zoompan = `zoompan=z='${lerp(z0, z1)}':x='(iw-iw/zoom)*(${lerp(px0, px1)})':y='(ih-ih/zoom)*(${lerp(py0, py1)})':d=${frames}:s=${w0}x${h0}:fps=${fps}`;
+  const tone = 180 + Math.floor(rng() * 200);
+  const graph = [
+    `[0:v]${zoompan},format=yuv420p,split=2[a][b]`,
+    '[a]null[v0]',
+    `[b]scale=${w1}:${h1}[v1]`,
+    `[1:a]volume=0.06,afade=t=in:st=0:d=0.3,afade=t=out:st=${seconds - 0.4}:d=0.4,asplit=2[a0][a1]`,
+  ].join(';');
+
+  const encode =
+    codec === 'vp9'
+      ? ['-c:v', 'libvpx-vp9', '-b:v:0', '420k', '-b:v:1', '180k', '-deadline', 'realtime', '-cpu-used', '8', '-row-mt', '1', '-g', '48', '-keyint_min', '48', '-c:a', 'libopus', '-b:a', '48k', '-ac', '1']
+      : ['-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-g', '48', '-keyint_min', '48', '-sc_threshold', '0', '-b:v:0', '420k', '-maxrate:v:0', '500k', '-bufsize:v:0', '900k', '-b:v:1', '180k', '-maxrate:v:1', '220k', '-bufsize:v:1', '400k', '-c:a', 'aac', '-b:a', '48k', '-ac', '1'];
+
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-clip-src-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tg-hls-'));
+  try {
+    await Promise.all([fs.mkdir(path.join(dir, '360p'), { recursive: true }), fs.mkdir(path.join(dir, '240p'), { recursive: true })]);
+    // rendition directories are named by their short edge, whatever the orientation
+    const names = ['360p', '240p'];
+    const source = path.join(work, 'artwork.jpg');
+    await fs.writeFile(source, await sharp(Buffer.from(posterSvg(w0 * 2, h0 * 2, seededRng(`poster:${artwork}`)))).jpeg({ quality: 90 }).toBuffer());
+    const segments =
+      codec === 'vp9'
+        ? ['-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', path.join(dir, '%v/seg_%05d.m4s')]
+        : ['-hls_segment_filename', path.join(dir, '%v/seg_%05d.ts')];
+    await run(env.FFMPEG_PATH, [
+      '-v', 'error', '-y', '-threads', '2',
+      '-i', source,
+      '-f', 'lavfi', '-i', `sine=frequency=${tone}:duration=${seconds}:sample_rate=48000`,
+      '-filter_complex', graph,
+      '-map', '[v0]', '-map', '[v1]', '-map', '[a0]', '-map', '[a1]',
+      ...encode,
+      '-threads', '2',
+      '-f', 'hls', '-hls_time', '2', '-hls_playlist_type', 'vod',
+      ...segments,
+      '-master_pl_name', 'master.m3u8',
+      '-var_stream_map', `v:0,a:0,name:${names[0]} v:1,a:1,name:${names[1]}`,
+      path.join(dir, '%v/index.m3u8'),
+    ]);
+    return { dir, files: await listFiles(dir), ...(await inspectHls(dir)) };
+  } catch (error) {
+    await fs.rm(dir, { recursive: true, force: true });
+    throw error;
+  } finally {
+    await fs.rm(work, { recursive: true, force: true });
+  }
 }
 
 /** Copy an HLS fixture under `videos/<id>/hls/`; returns the master playlist key for `Video.hlsMasterKey`. */
@@ -221,11 +287,22 @@ export async function storeHls(videoId: string, fixture: HlsFixture): Promise<st
   return keys.hlsMaster(videoId);
 }
 
-/** Remove the temp directories of every rendered fixture. */
+/** Remove the temp directories of every rendered clip. */
 export async function disposeFixtures(): Promise<void> {
-  const all = await Promise.allSettled([...fixtureCache.values()]);
-  fixtureCache.clear();
+  const all = await Promise.allSettled([...clipCache.values()]);
+  clipCache.clear();
   await Promise.all(all.map((r) => (r.status === 'fulfilled' ? fs.rm(r.value.dir, { recursive: true, force: true }) : undefined)));
+}
+
+/** Run `fn` over `items` with at most `limit` in flight (results keep the input order). */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i]!, i);
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length) }, worker));
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,33 +317,65 @@ export type MediaVideoInput = {
   tags?: string[];
   categoryId?: string | null;
   kind?: VideoKind;
+  /** Only used when no HLS is rendered (a poster-only fixture); with HLS the real duration of the clip is stored. */
   durationSeconds?: number;
   publishedAt?: Date;
   viewCount?: number;
-  /** Real playable HLS (shorts need it; regular videos usually do not for discovery pages). */
+  /**
+   * Render real playable HLS from the poster artwork (default: shorts only). With it, `durationSeconds`/`width`/`height`
+   * are the REAL values of the rendered clip, so the duration badge equals what the player shows.
+   */
   withHls?: boolean;
-  hlsSeed?: string;
   hlsCodec?: HlsCodec;
+  /** Clip length in seconds (default: 6–8 s for videos, 5 s for shorts). */
+  clipSeconds?: number;
+  /** Re-render poster and media even when the row already has `hlsMasterKey` (by default such a video is left untouched). */
+  regenerateMedia?: boolean;
   /** Lifecycle shortcut for hidden-state fixtures. */
   state?: 'public' | 'unlisted' | 'private' | 'draft' | 'takedown';
   /** Point `hlsMasterKey` at a playlist that does not exist (broken short). */
   brokenHls?: boolean;
+  /** Artwork seed shared by the poster and the clip (default: the video id). */
   posterSeed?: string;
+  /** Leave `posterKey` empty (a video whose thumbnail was never produced). */
+  noPoster?: boolean;
 };
 
-/** Insert a READY/PUBLISHED video with a poster (and optionally playable HLS). Idempotent when `id` is given. */
+/**
+ * Insert a READY/PUBLISHED video with a poster (and optionally playable HLS). Idempotent when `id` is given: media is only
+ * rendered when the row has none yet (or `regenerateMedia` is set); the textual fields are always refreshed.
+ */
 export async function createMediaVideo(input: MediaVideoInput) {
   const id = input.id ?? newVideoId();
   const kind = input.kind ?? 'VIDEO';
   const channel = await db.channel.findUniqueOrThrow({ where: { id: input.channelId }, select: { name: true } });
   const search = buildVideoSearchFields({ title: input.title, description: input.description, tags: input.tags, channelName: channel.name });
   const publishedAt = input.publishedAt ?? new Date();
+  const wantsHls = !input.brokenHls && (input.withHls ?? kind === 'SHORT');
+  const artwork = input.posterSeed ?? id;
 
-  const poster = await renderPoster(input.posterSeed ?? id, kind === 'SHORT' ? { width: 360, height: 640 } : { width: 640, height: 360 });
-  const posterKey = await storePoster(id, poster);
-  let hlsMasterKey: string | null = null;
-  if (input.brokenHls) hlsMasterKey = keys.hlsMaster(id);
-  else if (input.withHls ?? kind === 'SHORT') hlsMasterKey = await storeHls(id, await renderShortHls(input.hlsSeed ?? id, { codec: input.hlsCodec }));
+  const existing = await db.video.findUnique({ where: { id }, select: { posterKey: true, hlsMasterKey: true } });
+  const reuseMedia = !!existing && !input.regenerateMedia && !input.brokenHls && !input.noPoster && !!existing.posterKey && (!wantsHls || !!existing.hlsMasterKey);
+
+  const media: Pick<Prisma.VideoUncheckedCreateInput, 'posterKey' | 'hlsMasterKey' | 'durationSeconds' | 'width' | 'height'> = {
+    posterKey: null,
+    hlsMasterKey: null,
+    durationSeconds: input.durationSeconds ?? (kind === 'SHORT' ? 5 : 180),
+    width: kind === 'SHORT' ? 360 : 1280,
+    height: kind === 'SHORT' ? 640 : 720,
+  };
+  if (!reuseMedia) {
+    if (input.noPoster) await getStorage().deletePrefix(`${keys.videoPrefix(id)}thumbs/`);
+    else media.posterKey = await storePoster(id, await renderPoster(artwork, kind === 'SHORT' ? { width: 360, height: 640 } : { width: 640, height: 360 }));
+    if (input.brokenHls) media.hlsMasterKey = keys.hlsMaster(id);
+    else if (wantsHls) {
+      const clip = await renderClip({ artwork, kind, seconds: input.clipSeconds, codec: input.hlsCodec });
+      media.hlsMasterKey = await storeHls(id, clip);
+      media.durationSeconds = clip.durationSeconds;
+      media.width = clip.width;
+      media.height = clip.height;
+    }
+  }
 
   const data: Prisma.VideoUncheckedCreateInput = {
     id,
@@ -281,11 +390,7 @@ export async function createMediaVideo(input: MediaVideoInput) {
     visibility: 'PUBLIC',
     publishedAt,
     createdAt: publishedAt,
-    durationSeconds: input.durationSeconds ?? (kind === 'SHORT' ? 5 : 180),
-    width: kind === 'SHORT' ? 360 : 1280,
-    height: kind === 'SHORT' ? 640 : 720,
-    posterKey,
-    hlsMasterKey,
+    ...media,
     viewCount: input.viewCount ?? 0,
     ...search,
   };
@@ -307,5 +412,7 @@ export async function createMediaVideo(input: MediaVideoInput) {
   }
   const { id: _id, ...rest } = data;
   void _id;
+  // media that was kept must not be overwritten by the placeholders in `media`
+  if (reuseMedia) for (const key of ['posterKey', 'hlsMasterKey', 'durationSeconds', 'width', 'height'] as const) delete rest[key];
   return db.video.upsert({ where: { id }, create: data, update: rest });
 }

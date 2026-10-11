@@ -51,27 +51,44 @@ export async function loadWindowStats(videoIds: readonly string[], since: Date):
   return stats;
 }
 
-/** The public videos with the most activity (views + weighted likes) inside the window, best first. */
+/**
+ * Candidate pool for "recent activity" ranking: the most-viewed and the newest PUBLIC videos of a kind/category.
+ * Window activity is then counted for the pool only, with one index probe per video on `ViewEvent(videoId, createdAt)`.
+ * That keeps the cost proportional to the pool (≤ 500 videos) instead of to the number of events in the window — the
+ * whole-window `GROUP BY` it replaces took ~280 ms on 1.5 M events, this takes ~8 ms. A video that is hot but neither
+ * among the 300 most-viewed nor the 200 newest of its category cannot appear; a surge raises the all-time counter too,
+ * so in practice that only affects long-tail videos.
+ */
+export const HOT_POOL = { popular: 300, newest: 200 } as const;
+
+function candidatePool(opts: { kind?: 'VIDEO' | 'SHORT'; categoryId?: string }): Prisma.Sql {
+  const category = opts.categoryId ? Prisma.sql`AND v."categoryId" = ${opts.categoryId}` : Prisma.empty;
+  const source = Prisma.sql`FROM "Video" v JOIN "Channel" c ON c.id = v."channelId" WHERE ${Prisma.raw(PUBLIC_VIDEO_SQL)} ${kindFilter(opts.kind)} ${category}`;
+  return Prisma.sql`
+    (SELECT v.id, v."categoryId" ${source} ORDER BY v."viewCount" DESC, v.id ASC LIMIT ${HOT_POOL.popular}::int)
+    UNION
+    (SELECT v.id, v."categoryId" ${source} ORDER BY v."publishedAt" DESC, v.id ASC LIMIT ${HOT_POOL.newest}::int)`;
+}
+
+/** The public videos with the most activity (views + weighted likes) inside the window, best first (see `HOT_POOL`). */
 export async function loadHotVideoIds(opts: {
   since: Date;
   kind?: 'VIDEO' | 'SHORT';
   categoryId?: string;
   limit: number;
 }): Promise<string[]> {
-  const category = opts.categoryId ? Prisma.sql`AND v."categoryId" = ${opts.categoryId}` : Prisma.empty;
   const rows = await db.$queryRaw<{ id: string }[]>`
-    SELECT v.id
-    FROM "Video" v
-    JOIN "Channel" c ON c.id = v."channelId"
-    LEFT JOIN (
-      SELECT "videoId", count(*)::int AS n FROM "ViewEvent" WHERE "createdAt" >= ${opts.since} GROUP BY "videoId"
-    ) ve ON ve."videoId" = v.id
-    LEFT JOIN (
-      SELECT "videoId", count(*)::int AS n FROM "VideoLike" WHERE "createdAt" >= ${opts.since} GROUP BY "videoId"
-    ) vl ON vl."videoId" = v.id
-    WHERE ${Prisma.raw(PUBLIC_VIDEO_SQL)} ${kindFilter(opts.kind)} ${category}
-      AND (ve.n IS NOT NULL OR vl.n IS NOT NULL)
-    ORDER BY (COALESCE(ve.n, 0) + 5 * COALESCE(vl.n, 0)) DESC, v.id ASC
+    WITH pool AS (${candidatePool(opts)})
+    SELECT p.id
+    FROM pool p
+    CROSS JOIN LATERAL (
+      SELECT count(*)::int AS n FROM "ViewEvent" e WHERE e."videoId" = p.id AND e."createdAt" >= ${opts.since}
+    ) ve
+    CROSS JOIN LATERAL (
+      SELECT count(*)::int AS n FROM "VideoLike" l WHERE l."videoId" = p.id AND l."createdAt" >= ${opts.since}
+    ) vl
+    WHERE ve.n > 0 OR vl.n > 0
+    ORDER BY (ve.n + 5 * vl.n) DESC, p.id ASC
     LIMIT ${opts.limit}::int`;
   return rows.map((r) => r.id);
 }
@@ -211,19 +228,21 @@ export async function loadViewerProfile(viewerId: string, now: Date): Promise<Vi
   return buildViewerProfile(entries, likeEntries, follows.map((f) => f.channelId), now);
 }
 
-/** Top categories by activity inside the window (views + weighted likes); falls back to catalogue size. */
+/**
+ * Top categories by views inside the window among the candidate pool (see `HOT_POOL`); ties fall back to how many pool
+ * videos the category has, then to its configured sort order.
+ */
 export async function loadTopCategoryIds(opts: { since: Date; limit: number }): Promise<string[]> {
   const hot = await db.$queryRaw<{ id: string }[]>`
-    SELECT v."categoryId" AS id
-    FROM "Video" v
-    JOIN "Channel" c ON c.id = v."channelId"
-    LEFT JOIN "Category" cat ON cat.id = v."categoryId"
-    LEFT JOIN (
-      SELECT "videoId", count(*)::int AS n FROM "ViewEvent" WHERE "createdAt" >= ${opts.since} GROUP BY "videoId"
-    ) ve ON ve."videoId" = v.id
-    WHERE ${Prisma.raw(PUBLIC_VIDEO_SQL)} AND v."kind" = 'VIDEO' AND cat."isActive" = true
-    GROUP BY v."categoryId", cat."sortOrder"
-    ORDER BY sum(COALESCE(ve.n, 0)) DESC, count(*) DESC, cat."sortOrder" ASC, v."categoryId" ASC
+    WITH pool AS (${candidatePool({ kind: 'VIDEO' })})
+    SELECT p."categoryId" AS id
+    FROM pool p
+    JOIN "Category" cat ON cat.id = p."categoryId" AND cat."isActive" = true
+    CROSS JOIN LATERAL (
+      SELECT count(*)::int AS n FROM "ViewEvent" e WHERE e."videoId" = p.id AND e."createdAt" >= ${opts.since}
+    ) ve
+    GROUP BY p."categoryId", cat."sortOrder"
+    ORDER BY sum(ve.n) DESC, count(*) DESC, cat."sortOrder" ASC, p."categoryId" ASC
     LIMIT ${opts.limit}::int`;
   return hot.map((r) => r.id);
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { ListVideo } from 'lucide-react';
-import { PosterPlaceholder } from '@/components/video/video-card';
+import { PosterImage } from '@/components/video/video-card';
 import { useFormatter } from '@/components/providers/format-provider';
 
 /** A playlist tile: cover of the first listed video, a count badge, title and description. */
@@ -35,11 +35,7 @@ export function PlaylistCard({
         aria-label={`${title}؛ ${f.count(videoCount, 'ویدیو')}`}
         className="relative block aspect-video overflow-hidden rounded-xl bg-muted outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
       >
-        {coverUrl ? (
-          <img src={coverUrl} alt="" width={640} height={360} loading="lazy" decoding="async" className="size-full object-cover transition-transform duration-300 group-hover/playlist:scale-[1.04]" />
-        ) : (
-          <PosterPlaceholder />
-        )}
+        <PosterImage src={coverUrl} className="transition-transform duration-300 group-hover/playlist:scale-[1.04]" />
         <span className="absolute inset-y-0 end-0 flex w-1/3 flex-col items-center justify-center gap-1 bg-black/65 text-white backdrop-blur-[2px]">
           <ListVideo aria-hidden="true" className="size-5" />
           <span className="text-sm font-semibold tabular-nums">{f.number(videoCount)}</span>

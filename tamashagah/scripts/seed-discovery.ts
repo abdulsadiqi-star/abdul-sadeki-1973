@@ -1,12 +1,20 @@
 /**
  * Demo catalogue for the discovery pages (home, search, categories, channels, shorts, library).
  *
- *   pnpm exec tsx --env-file-if-exists=.env scripts/seed-discovery.ts          # idempotent
+ *   pnpm exec tsx --env-file-if-exists=.env scripts/seed-discovery.ts                       # idempotent
+ *   pnpm exec tsx --env-file-if-exists=.env scripts/seed-discovery.ts --regenerate-media    # re-render posters and clips
+ *   SEED_HLS_CODEC=vp9 …                                                                    # VP9/Opus for Chromium builds without H.264
  *
- * Needs `pnpm db:seed` first (categories + demo accounts). Creates 6 more demo channels, ~40 videos with abstract posters,
- * 12 shorts with REAL playable HLS (ffmpeg lavfi), and synthetic activity: every ViewEvent has `source = 'SEED'`; likes,
- * follows, comments and watch history come from `demo-viewer-NN@tamashagah.test` accounts (nobody can log in as them).
- * Counters (viewCount, likeCount, followerCount, commentCount) are derived from the rows, so they stay honest.
+ * Needs `pnpm db:seed` first (categories + demo accounts). Creates 6 more demo channels and ~50 videos that are ALL really
+ * playable: a poster plus an HLS clip rendered with ffmpeg from the same abstract artwork (6–8 s landscape with 360p + 240p
+ * for videos, 5 s portrait for the 12 shorts; H.264/AAC, a quiet sine tone). Durations and sizes stored on the rows are the
+ * REAL values of those clips, so the duration badge equals what the player shows — the demo videos are therefore short.
+ * Synthetic activity: every ViewEvent has `source = 'SEED'`; likes, follows, comments and watch history come from
+ * `demo-viewer-NN@tamashagah.test` accounts (nobody can log in as them). Counters (viewCount, likeCount, followerCount,
+ * commentCount) are derived from the rows, so they stay honest.
+ *
+ * Re-running is cheap: a video that already has `hlsMasterKey` keeps its media (clips are only encoded for new videos,
+ * 3 at a time, once per distinct artwork).
  */
 import { randomToken } from '../src/lib/ids';
 import { hashPassword } from '../src/lib/auth/password';
@@ -14,10 +22,14 @@ import { db } from '../src/lib/db';
 import { watchLaterPlaylistId } from '../src/lib/ids';
 import { buildChannelSearchName } from '../src/lib/persian';
 import { chunk } from '../src/lib/utils';
-import { createMediaVideo, disposeFixtures, seededRng, stableVideoId, storeChannelImages } from './discovery-fixtures';
+import { createMediaVideo, disposeFixtures, mapLimit, seededRng, stableVideoId, storeChannelImages } from './discovery-fixtures';
 
 const DAY = 86_400_000;
 const NOW = Date.now();
+const STARTED = Date.now();
+const REGENERATE_MEDIA = process.argv.includes('--regenerate-media') || process.env.SEED_REGEN_MEDIA === '1';
+/** ffmpeg runs in parallel (each encode uses 2 threads); 3 keeps a 4-core machine busy without thrashing. */
+const ENCODE_CONCURRENCY = 3;
 
 type ChannelDef = { handle: string; name: string; description: string; verified?: boolean; links?: { title: string; url: string }[] };
 
@@ -42,8 +54,6 @@ type VideoDef = {
   title: string;
   description: string;
   tags: string[];
-  /** minutes (videos) — shorts are always 5 s */
-  min?: number;
   ageDays: number;
   /** relative popularity (events ≈ weight × 45) */
   weight: number;
@@ -53,53 +63,53 @@ type VideoDef = {
 
 const VIDEOS: VideoDef[] = [
   // --- آشپزی با سارا
-  { channel: 'sara-cooks', category: 'cooking', title: 'طرز تهیه‌ی قورمه‌سبزی اصیل ایرانی', description: 'قورمه‌سبزی را همان‌طور که مادربزرگ‌ها می‌پختند درست می‌کنیم: سبزی خوب سرخ‌شده، لیمو‌عمانی و کمی صبر.', tags: ['قورمه‌سبزی', 'غذای ایرانی', 'آشپزی'], min: 18.5, ageDays: 3, weight: 9, hot: true },
-  { channel: 'sara-cooks', category: 'cooking', title: 'کباب تابه‌ای مجلسی در ۳۰ دقیقه', description: 'برای مهمانی‌های ناگهانی؛ کباب تابه‌ای نرم و آبدار با مواد ساده.', tags: ['کباب', 'کباب تابه‌ای', 'غذای مجلسی'], min: 12.4, ageDays: 9, weight: 6 },
-  { channel: 'sara-cooks', category: 'cooking', title: 'آش رشته‌ی سنتی؛ از خمیر تا سفره', description: 'آش رشته‌ی غلیظ با کشک و نعناداغ؛ همراه با رشته‌ی دست‌ساز.', tags: ['آش رشته', 'سنتی', 'غذای ایرانی'], min: 21, ageDays: 14, weight: 4 },
-  { channel: 'sara-cooks', category: 'cooking', title: 'کیک شکلاتی خانگی بدون فر', description: 'کیک شکلاتی نرم و خوشمزه با قابلمه؛ بدون نیاز به فر.', tags: ['کیک', 'شکلات', 'دسر'], min: 9.2, ageDays: 20, weight: 7 },
-  { channel: 'sara-cooks', category: 'cooking', title: 'سالاد شیرازی و مخلفات سفره', description: 'سالاد شیرازی خنک، ماست و خیار و ترشی‌ای که کنار هر غذایی می‌نشیند.', tags: ['سالاد شیرازی', 'مخلفات'], min: 6.7, ageDays: 31, weight: 2 },
-  { channel: 'sara-cooks', category: 'cooking', title: 'صبحانه‌ی سریع برای روزهای پرمشغله', description: 'سه ایده‌ی ده‌دقیقه‌ای برای صبحانه‌ای سیرکننده و سالم.', tags: ['صبحانه', 'سریع', 'سالم'], min: 7.8, ageDays: 5, weight: 3 },
+  { channel: 'sara-cooks', category: 'cooking', title: 'طرز تهیه‌ی قورمه‌سبزی اصیل ایرانی', description: 'قورمه‌سبزی را همان‌طور که مادربزرگ‌ها می‌پختند درست می‌کنیم: سبزی خوب سرخ‌شده، لیمو‌عمانی و کمی صبر.', tags: ['قورمه‌سبزی', 'غذای ایرانی', 'آشپزی'], ageDays: 3, weight: 9, hot: true },
+  { channel: 'sara-cooks', category: 'cooking', title: 'کباب تابه‌ای مجلسی در ۳۰ دقیقه', description: 'برای مهمانی‌های ناگهانی؛ کباب تابه‌ای نرم و آبدار با مواد ساده.', tags: ['کباب', 'کباب تابه‌ای', 'غذای مجلسی'], ageDays: 9, weight: 6 },
+  { channel: 'sara-cooks', category: 'cooking', title: 'آش رشته‌ی سنتی؛ از خمیر تا سفره', description: 'آش رشته‌ی غلیظ با کشک و نعناداغ؛ همراه با رشته‌ی دست‌ساز.', tags: ['آش رشته', 'سنتی', 'غذای ایرانی'], ageDays: 14, weight: 4 },
+  { channel: 'sara-cooks', category: 'cooking', title: 'کیک شکلاتی خانگی بدون فر', description: 'کیک شکلاتی نرم و خوشمزه با قابلمه؛ بدون نیاز به فر.', tags: ['کیک', 'شکلات', 'دسر'], ageDays: 20, weight: 7 },
+  { channel: 'sara-cooks', category: 'cooking', title: 'سالاد شیرازی و مخلفات سفره', description: 'سالاد شیرازی خنک، ماست و خیار و ترشی‌ای که کنار هر غذایی می‌نشیند.', tags: ['سالاد شیرازی', 'مخلفات'], ageDays: 31, weight: 2 },
+  { channel: 'sara-cooks', category: 'cooking', title: 'صبحانه‌ی سریع برای روزهای پرمشغله', description: 'سه ایده‌ی ده‌دقیقه‌ای برای صبحانه‌ای سیرکننده و سالم.', tags: ['صبحانه', 'سریع', 'سالم'], ageDays: 5, weight: 3 },
   // --- آرمان تک
-  { channel: 'arman-tech', category: 'technology', title: 'آموزش پایتون برای مبتدیان — جلسه‌ی اول', description: 'در این جلسه پایتون را نصب می‌کنیم، اولین برنامه‌مان را می‌نویسیم و با متغیرها و انواع داده آشنا می‌شویم.', tags: ['پایتون', 'برنامه‌نویسی', 'آموزش', 'مبتدی'], min: 32, ageDays: 12, weight: 11, hot: true },
-  { channel: 'arman-tech', category: 'technology', title: 'آموزش پایتون — شرط‌ها و حلقه‌ها', description: 'if و else، حلقه‌ی for و while و چند تمرین کوچک برای مسلط شدن.', tags: ['پایتون', 'برنامه‌نویسی', 'آموزش'], min: 27, ageDays: 8, weight: 8, hot: true },
-  { channel: 'arman-tech', category: 'technology', title: 'آموزش پایتون — تابع‌ها و ماژول‌ها', description: 'تعریف تابع، آرگومان‌ها، مقدار بازگشتی و استفاده از ماژول‌های آماده.', tags: ['پایتون', 'برنامه‌نویسی', 'تابع'], min: 29, ageDays: 4, weight: 5 },
-  { channel: 'arman-tech', category: 'technology', title: 'بررسی لپ‌تاپ‌های امسال؛ کدام را بخریم؟', description: 'مقایسه‌ی چند لپ‌تاپ پرفروش از نظر کارایی، باتری و قیمت.', tags: ['لپ‌تاپ', 'بررسی', 'خرید'], min: 19.5, ageDays: 6, weight: 6 },
-  { channel: 'arman-tech', category: 'technology', title: 'جاوااسکریپت مدرن؛ از صفر تا یک پروژه‌ی واقعی', description: 'با ES2024 یک برنامه‌ی کوچک وب می‌سازیم و مفهوم‌های مهم را یاد می‌گیریم.', tags: ['جاوااسکریپت', 'وب', 'برنامه‌نویسی'], min: 41, ageDays: 18, weight: 7 },
-  { channel: 'arman-tech', category: 'technology', title: 'امنیت حساب‌های کاربری؛ هفت نکته‌ی ضروری', description: 'گذرواژه‌ی قوی، تأیید دومرحله‌ای و چند عادت ساده که جلوی بیشتر هک‌ها را می‌گیرد.', tags: ['امنیت', 'گذرواژه', 'حریم خصوصی'], min: 11, ageDays: 25, weight: 3 },
-  { channel: 'arman-tech', category: 'technology', title: 'بهترین گوشی‌های میان‌رده‌ی امسال', description: 'گوشی‌های میان‌رده‌ای که ارزش پولشان را دارند؛ با نقاط قوت و ضعف هر کدام.', tags: ['گوشی', 'بررسی', 'میان‌رده'], min: 15, ageDays: 2, weight: 4 },
+  { channel: 'arman-tech', category: 'technology', title: 'آموزش پایتون برای مبتدیان — جلسه‌ی اول', description: 'در این جلسه پایتون را نصب می‌کنیم، اولین برنامه‌مان را می‌نویسیم و با متغیرها و انواع داده آشنا می‌شویم.', tags: ['پایتون', 'برنامه‌نویسی', 'آموزش', 'مبتدی'], ageDays: 12, weight: 11, hot: true },
+  { channel: 'arman-tech', category: 'technology', title: 'آموزش پایتون — شرط‌ها و حلقه‌ها', description: 'if و else، حلقه‌ی for و while و چند تمرین کوچک برای مسلط شدن.', tags: ['پایتون', 'برنامه‌نویسی', 'آموزش'], ageDays: 8, weight: 8, hot: true },
+  { channel: 'arman-tech', category: 'technology', title: 'آموزش پایتون — تابع‌ها و ماژول‌ها', description: 'تعریف تابع، آرگومان‌ها، مقدار بازگشتی و استفاده از ماژول‌های آماده.', tags: ['پایتون', 'برنامه‌نویسی', 'تابع'], ageDays: 4, weight: 5 },
+  { channel: 'arman-tech', category: 'technology', title: 'بررسی لپ‌تاپ‌های امسال؛ کدام را بخریم؟', description: 'مقایسه‌ی چند لپ‌تاپ پرفروش از نظر کارایی، باتری و قیمت.', tags: ['لپ‌تاپ', 'بررسی', 'خرید'], ageDays: 6, weight: 6 },
+  { channel: 'arman-tech', category: 'technology', title: 'جاوااسکریپت مدرن؛ از صفر تا یک پروژه‌ی واقعی', description: 'با ES2024 یک برنامه‌ی کوچک وب می‌سازیم و مفهوم‌های مهم را یاد می‌گیریم.', tags: ['جاوااسکریپت', 'وب', 'برنامه‌نویسی'], ageDays: 18, weight: 7 },
+  { channel: 'arman-tech', category: 'technology', title: 'امنیت حساب‌های کاربری؛ هفت نکته‌ی ضروری', description: 'گذرواژه‌ی قوی، تأیید دومرحله‌ای و چند عادت ساده که جلوی بیشتر هک‌ها را می‌گیرد.', tags: ['امنیت', 'گذرواژه', 'حریم خصوصی'], ageDays: 25, weight: 3 },
+  { channel: 'arman-tech', category: 'technology', title: 'بهترین گوشی‌های میان‌رده‌ی امسال', description: 'گوشی‌های میان‌رده‌ای که ارزش پولشان را دارند؛ با نقاط قوت و ضعف هر کدام.', tags: ['گوشی', 'بررسی', 'میان‌رده'], ageDays: 2, weight: 4 },
   // --- سفرنامه‌ی نیکا
-  { channel: 'nika-travel', category: 'travel', title: 'سفر به اصفهان؛ نصف جهان در پاییز', description: 'میدان نقش جهان، سی‌وسه‌پل و کوچه‌های قدیمی؛ دو روز پیاده‌روی در اصفهان پاییزی.', tags: ['اصفهان', 'سفر', 'گردشگری'], min: 16, ageDays: 7, weight: 8, hot: true },
-  { channel: 'nika-travel', category: 'travel', title: 'شیراز در یک روز؛ حافظیه، نارنجستان و بازار وکیل', description: 'اگر فقط یک روز در شیراز وقت دارید، این مسیر را امتحان کنید.', tags: ['شیراز', 'سفر', 'حافظ'], min: 13, ageDays: 15, weight: 5 },
-  { channel: 'nika-travel', category: 'travel', title: 'شب‌مانی در کویر مصر زیر آسمان پرستاره', description: 'یک شب چادر در دل کویر؛ از غروب تا طلوع.', tags: ['کویر', 'شب‌مانی', 'طبیعت‌گردی'], min: 18, ageDays: 22, weight: 6 },
-  { channel: 'nika-travel', category: 'travel', title: 'راهنمای سفر به استانبول با بودجه‌ی کم', description: 'اقامت، حمل‌ونقل و غذا؛ چطور هزینه‌های سفر به استانبول را پایین بیاوریم.', tags: ['استانبول', 'ترکیه', 'سفر ارزان'], min: 22, ageDays: 11, weight: 4 },
-  { channel: 'nika-travel', category: 'travel', title: 'غذاهای خیابانی استانبول', description: 'از بالیک‌اکمک تا سیمیت؛ هر چه در خیابان‌های استانبول می‌شود خورد.', tags: ['استانبول', 'غذا', 'سفر'], min: 10.5, ageDays: 3, weight: 3 },
+  { channel: 'nika-travel', category: 'travel', title: 'سفر به اصفهان؛ نصف جهان در پاییز', description: 'میدان نقش جهان، سی‌وسه‌پل و کوچه‌های قدیمی؛ دو روز پیاده‌روی در اصفهان پاییزی.', tags: ['اصفهان', 'سفر', 'گردشگری'], ageDays: 7, weight: 8, hot: true },
+  { channel: 'nika-travel', category: 'travel', title: 'شیراز در یک روز؛ حافظیه، نارنجستان و بازار وکیل', description: 'اگر فقط یک روز در شیراز وقت دارید، این مسیر را امتحان کنید.', tags: ['شیراز', 'سفر', 'حافظ'], ageDays: 15, weight: 5 },
+  { channel: 'nika-travel', category: 'travel', title: 'شب‌مانی در کویر مصر زیر آسمان پرستاره', description: 'یک شب چادر در دل کویر؛ از غروب تا طلوع.', tags: ['کویر', 'شب‌مانی', 'طبیعت‌گردی'], ageDays: 22, weight: 6 },
+  { channel: 'nika-travel', category: 'travel', title: 'راهنمای سفر به استانبول با بودجه‌ی کم', description: 'اقامت، حمل‌ونقل و غذا؛ چطور هزینه‌های سفر به استانبول را پایین بیاوریم.', tags: ['استانبول', 'ترکیه', 'سفر ارزان'], ageDays: 11, weight: 4 },
+  { channel: 'nika-travel', category: 'travel', title: 'غذاهای خیابانی استانبول', description: 'از بالیک‌اکمک تا سیمیت؛ هر چه در خیابان‌های استانبول می‌شود خورد.', tags: ['استانبول', 'غذا', 'سفر'], ageDays: 3, weight: 3 },
   // --- ورزش‌کده
-  { channel: 'varzeshkade', category: 'sports', title: 'تمرین کامل بدنسازی در خانه بدون وسیله', description: 'یک برنامه‌ی ۲۸ دقیقه‌ای برای تمام بدن؛ فقط به یک فرش کوچک نیاز دارید.', tags: ['بدنسازی', 'تمرین در خانه', 'تناسب اندام'], min: 28, ageDays: 5, weight: 7 },
-  { channel: 'varzeshkade', category: 'sports', title: 'خلاصه‌ی بازی‌های پرگل هفته', description: 'گل‌ها و صحنه‌های مهم هفته در یک ویدیوی کوتاه.', tags: ['فوتبال', 'خلاصه بازی', 'گل'], min: 9, ageDays: 1, weight: 9, hot: true },
-  { channel: 'varzeshkade', category: 'sports', title: 'شروع دویدن برای تازه‌کارها', description: 'برنامه‌ی چهار‌هفته‌ای برای کسی که می‌خواهد دویدن را شروع کند و زود خسته نشود.', tags: ['دویدن', 'ورزش', 'تناسب اندام'], min: 14, ageDays: 10, weight: 3 },
-  { channel: 'varzeshkade', category: 'health', title: 'یوگا برای کمردرد؛ ۱۵ دقیقه هر روز', description: 'حرکت‌های ملایم برای کشش و تقویت ناحیه‌ی کمر.', tags: ['یوگا', 'کمردرد', 'سلامت'], min: 15, ageDays: 17, weight: 5 },
+  { channel: 'varzeshkade', category: 'sports', title: 'تمرین کامل بدنسازی در خانه بدون وسیله', description: 'یک برنامه‌ی ۲۸ دقیقه‌ای برای تمام بدن؛ فقط به یک فرش کوچک نیاز دارید.', tags: ['بدنسازی', 'تمرین در خانه', 'تناسب اندام'], ageDays: 5, weight: 7 },
+  { channel: 'varzeshkade', category: 'sports', title: 'خلاصه‌ی بازی‌های پرگل هفته', description: 'گل‌ها و صحنه‌های مهم هفته در یک ویدیوی کوتاه.', tags: ['فوتبال', 'خلاصه بازی', 'گل'], ageDays: 1, weight: 9, hot: true },
+  { channel: 'varzeshkade', category: 'sports', title: 'شروع دویدن برای تازه‌کارها', description: 'برنامه‌ی چهار‌هفته‌ای برای کسی که می‌خواهد دویدن را شروع کند و زود خسته نشود.', tags: ['دویدن', 'ورزش', 'تناسب اندام'], ageDays: 10, weight: 3 },
+  { channel: 'varzeshkade', category: 'health', title: 'یوگا برای کمردرد؛ ۱۵ دقیقه هر روز', description: 'حرکت‌های ملایم برای کشش و تقویت ناحیه‌ی کمر.', tags: ['یوگا', 'کمردرد', 'سلامت'], ageDays: 17, weight: 5 },
   // --- موسیقی زنده
-  { channel: 'zende-music', category: 'music', title: 'اجرای زنده‌ی سه‌تار در دستگاه دشتی', description: 'نوازندگی سه‌تار در فضایی آرام؛ ضبط شده بدون ادیت.', tags: ['سه‌تار', 'دشتی', 'موسیقی ایرانی'], min: 8.5, ageDays: 13, weight: 4 },
-  { channel: 'zende-music', category: 'music', title: 'آموزش گیتار — آکوردهای پایه', description: 'شش آکورد اصلی و چند ریتم ساده برای اولین آهنگ‌تان.', tags: ['گیتار', 'آموزش موسیقی', 'آکورد'], min: 24, ageDays: 6, weight: 6 },
-  { channel: 'zende-music', category: 'music', title: 'کنسرت خیابانی؛ آهنگ‌های ماندگار قدیمی', description: 'اجرای خیابانی چند ترانه‌ی قدیمی با همراهی مردم.', tags: ['موسیقی', 'کنسرت', 'خیابانی'], min: 31, ageDays: 28, weight: 3 },
+  { channel: 'zende-music', category: 'music', title: 'اجرای زنده‌ی سه‌تار در دستگاه دشتی', description: 'نوازندگی سه‌تار در فضایی آرام؛ ضبط شده بدون ادیت.', tags: ['سه‌تار', 'دشتی', 'موسیقی ایرانی'], ageDays: 13, weight: 4 },
+  { channel: 'zende-music', category: 'music', title: 'آموزش گیتار — آکوردهای پایه', description: 'شش آکورد اصلی و چند ریتم ساده برای اولین آهنگ‌تان.', tags: ['گیتار', 'آموزش موسیقی', 'آکورد'], ageDays: 6, weight: 6 },
+  { channel: 'zende-music', category: 'music', title: 'کنسرت خیابانی؛ آهنگ‌های ماندگار قدیمی', description: 'اجرای خیابانی چند ترانه‌ی قدیمی با همراهی مردم.', tags: ['موسیقی', 'کنسرت', 'خیابانی'], ageDays: 28, weight: 3 },
   // --- کودکانه‌ها
-  { channel: 'kodakaneha', category: 'kids', title: 'قصه‌ی شب؛ روباه و کلاغ حیله‌گر', description: 'قصه‌ای کوتاه با صدای آرام برای قبل از خواب.', tags: ['قصه', 'کودک', 'شب‌بخیر'], min: 7, ageDays: 4, weight: 6 },
-  { channel: 'kodakaneha', category: 'kids', title: 'آموزش الفبا با آواز', description: 'حروف الفبای فارسی را با یک آهنگ شاد یاد بگیریم.', tags: ['الفبا', 'آموزش', 'کودک'], min: 9, ageDays: 19, weight: 5 },
-  { channel: 'kodakaneha', category: 'kids', title: 'کاردستی با کاغذ رنگی؛ قایق کاغذی', description: 'ساخت قایق کاغذی در چند مرحله‌ی ساده.', tags: ['کاردستی', 'کودک', 'کاغذ'], min: 6, ageDays: 9, weight: 3 },
+  { channel: 'kodakaneha', category: 'kids', title: 'قصه‌ی شب؛ روباه و کلاغ حیله‌گر', description: 'قصه‌ای کوتاه با صدای آرام برای قبل از خواب.', tags: ['قصه', 'کودک', 'شب‌بخیر'], ageDays: 4, weight: 6 },
+  { channel: 'kodakaneha', category: 'kids', title: 'آموزش الفبا با آواز', description: 'حروف الفبای فارسی را با یک آهنگ شاد یاد بگیریم.', tags: ['الفبا', 'آموزش', 'کودک'], ageDays: 19, weight: 5 },
+  { channel: 'kodakaneha', category: 'kids', title: 'کاردستی با کاغذ رنگی؛ قایق کاغذی', description: 'ساخت قایق کاغذی در چند مرحله‌ی ساده.', tags: ['کاردستی', 'کودک', 'کاغذ'], ageDays: 9, weight: 3 },
   // --- طنز روزانه
-  { channel: 'tanz-rooz', category: 'comedy', title: 'وقتی مهمان بی‌خبر می‌آید!', description: 'همه‌مان این صحنه را دیده‌ایم؛ خانه شلوغ، یخچال خالی.', tags: ['طنز', 'خانوادگی', 'مهمان'], min: 3.5, ageDays: 2, weight: 9, hot: true },
-  { channel: 'tanz-rooz', category: 'comedy', title: 'دعوای همیشگی سر کنترل تلویزیون', description: 'ماجرای کنترلی که هیچ‌وقت سر جایش نیست.', tags: ['طنز', 'خانواده'], min: 2.8, ageDays: 12, weight: 5 },
-  { channel: 'tanz-rooz', category: 'comedy', title: 'اگر ایرانی‌ها فضانورد بودند', description: 'تصور کنید پنج ایرانی در یک ایستگاه فضایی گیر کنند.', tags: ['طنز', 'فضا'], min: 4.1, ageDays: 21, weight: 4 },
+  { channel: 'tanz-rooz', category: 'comedy', title: 'وقتی مهمان بی‌خبر می‌آید!', description: 'همه‌مان این صحنه را دیده‌ایم؛ خانه شلوغ، یخچال خالی.', tags: ['طنز', 'خانوادگی', 'مهمان'], ageDays: 2, weight: 9, hot: true },
+  { channel: 'tanz-rooz', category: 'comedy', title: 'دعوای همیشگی سر کنترل تلویزیون', description: 'ماجرای کنترلی که هیچ‌وقت سر جایش نیست.', tags: ['طنز', 'خانواده'], ageDays: 12, weight: 5 },
+  { channel: 'tanz-rooz', category: 'comedy', title: 'اگر ایرانی‌ها فضانورد بودند', description: 'تصور کنید پنج ایرانی در یک ایستگاه فضایی گیر کنند.', tags: ['طنز', 'فضا'], ageDays: 21, weight: 4 },
   // --- آموزش آزاد
-  { channel: 'azad-amoozesh', category: 'education', title: 'ریاضی کنکور — تابع و دامنه', description: 'مفهوم تابع، تعیین دامنه و چند تست مهم کنکور.', tags: ['ریاضی', 'کنکور', 'آموزش'], min: 26, ageDays: 8, weight: 6 },
-  { channel: 'azad-amoozesh', category: 'education', title: '۱۰۰ لغت پرکاربرد انگلیسی', description: 'صد لغتی که در مکالمه‌ی روزمره بیش از همه می‌شنوید، همراه با مثال.', tags: ['زبان انگلیسی', 'لغت', 'آموزش'], min: 18, ageDays: 5, weight: 7 },
-  { channel: 'azad-amoozesh', category: 'education', title: 'مدیریت زمان برای دانشجویان', description: 'چند روش ساده برای برنامه‌ریزی هفتگی و مقابله با عقب‌انداختن کارها.', tags: ['مدیریت زمان', 'دانشجو', 'مطالعه'], min: 12, ageDays: 16, weight: 4 },
-  { channel: 'azad-amoozesh', category: 'art', title: 'تاریخ هنر ایران در ده دقیقه', description: 'مروری سریع بر هنر ایران از دوران باستان تا قاجار.', tags: ['تاریخ هنر', 'ایران'], min: 10.5, ageDays: 30, weight: 3 },
+  { channel: 'azad-amoozesh', category: 'education', title: 'ریاضی کنکور — تابع و دامنه', description: 'مفهوم تابع، تعیین دامنه و چند تست مهم کنکور.', tags: ['ریاضی', 'کنکور', 'آموزش'], ageDays: 8, weight: 6 },
+  { channel: 'azad-amoozesh', category: 'education', title: '۱۰۰ لغت پرکاربرد انگلیسی', description: 'صد لغتی که در مکالمه‌ی روزمره بیش از همه می‌شنوید، همراه با مثال.', tags: ['زبان انگلیسی', 'لغت', 'آموزش'], ageDays: 5, weight: 7 },
+  { channel: 'azad-amoozesh', category: 'education', title: 'مدیریت زمان برای دانشجویان', description: 'چند روش ساده برای برنامه‌ریزی هفتگی و مقابله با عقب‌انداختن کارها.', tags: ['مدیریت زمان', 'دانشجو', 'مطالعه'], ageDays: 16, weight: 4 },
+  { channel: 'azad-amoozesh', category: 'art', title: 'تاریخ هنر ایران در ده دقیقه', description: 'مروری سریع بر هنر ایران از دوران باستان تا قاجار.', tags: ['تاریخ هنر', 'ایران'], ageDays: 30, weight: 3 },
   // --- خبر علمی
-  { channel: 'khabar-elmi', category: 'news', title: 'مرور اخبار علمی هفته', description: 'مهم‌ترین خبرهای علمی هفته در یازده دقیقه.', tags: ['علم', 'خبر', 'فناوری'], min: 11, ageDays: 1, weight: 5 },
-  { channel: 'khabar-elmi', category: 'news', title: 'خلاصه‌ی اخبار دنیای فناوری', description: 'از رونمایی گجت‌های تازه تا تحولات دنیای نرم‌افزار.', tags: ['فناوری', 'خبر'], min: 8.5, ageDays: 6, weight: 3 },
-  { channel: 'khabar-elmi', category: 'technology', title: 'کشف تازه‌ی ستاره‌شناسان درباره‌ی کهکشان‌های دور', description: 'تلسکوپ‌های جدید چه چیزهایی را دیده‌اند و چرا مهم است؟', tags: ['نجوم', 'علم'], min: 13, ageDays: 20, weight: 4 },
-  // --- شورتس (5 ثانیه، HLS واقعی)
+  { channel: 'khabar-elmi', category: 'news', title: 'مرور اخبار علمی هفته', description: 'مهم‌ترین خبرهای علمی هفته در یازده دقیقه.', tags: ['علم', 'خبر', 'فناوری'], ageDays: 1, weight: 5 },
+  { channel: 'khabar-elmi', category: 'news', title: 'خلاصه‌ی اخبار دنیای فناوری', description: 'از رونمایی گجت‌های تازه تا تحولات دنیای نرم‌افزار.', tags: ['فناوری', 'خبر'], ageDays: 6, weight: 3 },
+  { channel: 'khabar-elmi', category: 'technology', title: 'کشف تازه‌ی ستاره‌شناسان درباره‌ی کهکشان‌های دور', description: 'تلسکوپ‌های جدید چه چیزهایی را دیده‌اند و چرا مهم است؟', tags: ['نجوم', 'علم'], ageDays: 20, weight: 4 },
+  // --- شورتس (۵ ثانیه، عمودی)
   { channel: 'sara-cooks', category: 'cooking', title: 'سه ترفند برای برنج دانه‌دانه', description: 'سه ترفند کوتاه برای پلوی آبکش‌شده.', tags: ['برنج', 'ترفند', 'آشپزی'], ageDays: 2, weight: 7, short: true, hot: true },
   { channel: 'arman-tech', category: 'technology', title: 'نکته‌ی سریع پایتون: list comprehension', description: 'ساخت لیست در یک خط.', tags: ['پایتون', 'نکته'], ageDays: 3, weight: 6, short: true },
   { channel: 'nika-travel', category: 'travel', title: 'یک دقیقه در بازار وکیل شیراز', description: 'قدم‌زدن در یکی از زیباترین بازارهای ایران.', tags: ['شیراز', 'بازار'], ageDays: 5, weight: 5, short: true },
@@ -178,27 +188,31 @@ async function main() {
   console.log(`✔ ${channelIds.size} channels`);
 
   // --- videos -------------------------------------------------------------------------------------------------------------
-  const created: { id: string; channelId: string; def: VideoDef; publishedAt: Date }[] = [];
-  for (const def of VIDEOS) {
-    const id = stableVideoId(`${def.channel}:${def.title}`);
-    const publishedAt = new Date(NOW - def.ageDays * DAY - Math.floor(rng() * 10) * 3_600_000);
-    const durationSeconds = def.short ? 5 : Math.round((def.min ?? 5) * 60);
-    await createMediaVideo({
-      id,
-      channelId: channelIds.get(def.channel)!,
-      categoryId: categories.get(def.category) ?? null,
-      kind: def.short ? 'SHORT' : 'VIDEO',
-      title: def.title,
-      description: def.description,
-      tags: def.tags,
-      durationSeconds,
-      publishedAt,
-      withHls: !!def.short,
-      hlsSeed: `short-${created.length % 4}`,
-    });
-    created.push({ id, channelId: channelIds.get(def.channel)!, def, publishedAt });
-  }
-  console.log(`✔ ${created.length} videos (${created.filter((c) => c.def.short).length} shorts with real HLS)`);
+  // Plan everything that draws from the RNG first (in order), then encode in parallel: the result does not depend on timing.
+  const created: { id: string; channelId: string; def: VideoDef; publishedAt: Date; durationSeconds: number }[] = [];
+  const plans = VIDEOS.map((def) => ({
+    def,
+    id: stableVideoId(`${def.channel}:${def.title}`),
+    channelId: channelIds.get(def.channel)!,
+    publishedAt: new Date(NOW - def.ageDays * DAY - Math.floor(rng() * 10) * 3_600_000),
+  }));
+  const rows = await mapLimit(plans, ENCODE_CONCURRENCY, (plan) =>
+    createMediaVideo({
+      id: plan.id,
+      channelId: plan.channelId,
+      categoryId: categories.get(plan.def.category) ?? null,
+      kind: plan.def.short ? 'SHORT' : 'VIDEO',
+      title: plan.def.title,
+      description: plan.def.description,
+      tags: plan.def.tags,
+      publishedAt: plan.publishedAt,
+      withHls: true,
+      regenerateMedia: REGENERATE_MEDIA,
+    }),
+  );
+  plans.forEach((plan, i) => created.push({ ...plan, durationSeconds: Math.round(rows[i]!.durationSeconds ?? 0) }));
+  const clipSeconds = rows.reduce((sum, row) => sum + (row.durationSeconds ?? 0), 0);
+  console.log(`✔ ${created.length} videos, all playable (${created.filter((c) => c.def.short).length} shorts; ${Math.round(clipSeconds)} s of HLS in total) in ${((Date.now() - STARTED) / 1000).toFixed(1)} s`);
 
   // --- synthetic activity (source = SEED) -------------------------------------------------------------------------------
   const videoIds = created.map((c) => c.id);
@@ -218,7 +232,7 @@ async function main() {
         channelId: c.channelId,
         userId: null,
         viewerKey: randomToken(10),
-        watchSeconds: Math.round(rng() * (c.def.short ? 5 : (c.def.min ?? 5) * 60)),
+        watchSeconds: Math.round(rng() * c.durationSeconds),
         device: devices[Math.floor(rng() * devices.length)]!,
         referrer: referrers[Math.floor(rng() * referrers.length)]!,
         source: 'SEED' as const,
@@ -279,12 +293,14 @@ async function main() {
   ];
   for (const [needle, fraction, completed, ago] of history) {
     const v = byTitle(needle);
-    const duration = Math.round((v.def.min ?? 5) * 60);
+    // real clip lengths are a few seconds, and "continue watching" needs >= 5 s of progress: stop a little before the end
+    const duration = v.durationSeconds;
+    const position = completed ? duration : Math.min(duration - 0.5, Math.max(5.2, duration * fraction));
     const at = new Date(NOW - ago * DAY);
     await db.watchHistory.upsert({
       where: { userId_videoId: { userId: viewerAccount.id, videoId: v.id } },
-      create: { userId: viewerAccount.id, videoId: v.id, positionSeconds: completed ? duration : duration * fraction, watchedSeconds: duration * fraction, completed, firstWatchedAt: at, lastWatchedAt: at },
-      update: {},
+      create: { userId: viewerAccount.id, videoId: v.id, positionSeconds: position, watchedSeconds: position, completed, firstWatchedAt: at, lastWatchedAt: at },
+      update: { positionSeconds: position, watchedSeconds: position, completed },
     });
   }
   for (const needle of ['شب‌مانی', 'آش رشته', 'کنسرت خیابانی', 'ریاضی کنکور']) {
@@ -323,7 +339,7 @@ async function main() {
   await db.$executeRaw`UPDATE "Video" v SET "commentCount" = COALESCE((SELECT count(*) FROM "Comment" c WHERE c."videoId" = v.id AND c.status = 'APPROVED'), 0)::int WHERE v.id = ANY(${videoIds})`;
   await db.$executeRaw`UPDATE "Channel" ch SET "followerCount" = COALESCE((SELECT count(*) FROM "Follow" f WHERE f."channelId" = ch.id), 0)::int`;
   console.log('✔ counters reconciled from rows');
-  console.log('Done. Demo viewer: viewer@tamashagah.test (password in .data/seed-credentials.json).');
+  console.log(`Done in ${((Date.now() - STARTED) / 1000).toFixed(1)} s. Demo viewer: viewer@tamashagah.test (password in .data/seed-credentials.json).`);
 }
 
 main()

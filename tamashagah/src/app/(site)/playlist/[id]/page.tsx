@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ChannelAvatar } from '@/components/channel-avatar';
 import { EmptyState } from '@/components/empty-state';
 import { Pagination } from '@/components/pagination';
-import { PosterPlaceholder } from '@/components/video/video-card';
+import { PosterImage } from '@/components/video/video-card';
 import { VerifiedBadge } from '@/components/verified-badge';
 import { getCurrentUser } from '@/lib/auth/session';
 import { getFormatter } from '@/lib/format-server';
@@ -58,7 +58,7 @@ export default async function PlaylistPage({ params, searchParams }: Props) {
     <div className="mx-auto max-w-5xl space-y-6">
       <header className="flex flex-col gap-5 sm:flex-row">
         <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-2xl bg-muted sm:w-80">
-          {view.coverUrl ? <img src={view.coverUrl} alt="" width={640} height={360} decoding="async" className="size-full object-cover" /> : <PosterPlaceholder />}
+          <PosterImage src={view.coverUrl} priority />
         </div>
         <div className="min-w-0 flex-1 space-y-3">
           <div>

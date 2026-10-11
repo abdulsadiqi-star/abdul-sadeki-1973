@@ -8,10 +8,10 @@ import { ChannelAvatar } from '@/components/channel-avatar';
 import { useFormatter } from '@/components/providers/format-provider';
 import { ShortPlayer } from '@/components/shorts/short-player';
 import { VerifiedBadge } from '@/components/verified-badge';
+import { PosterImage } from '@/components/video/video-card';
 import type { ShortItem } from '@/features/discovery/shorts';
 import { FollowButton } from '@/features/engagement/components/follow-button';
 import { LikeButton } from '@/features/engagement/components/like-button';
-import { cn } from '@/lib/utils';
 
 export type SlideMode = 'active' | 'preload' | 'idle';
 
@@ -70,17 +70,9 @@ export function ShortSlide({
       className="relative flex h-full snap-start snap-always items-center justify-center lg:py-3"
     >
       <div className="relative h-full max-w-full aspect-[9/16] overflow-hidden bg-black text-white lg:rounded-2xl">
-        {item.posterUrl && (
-          <img
-            src={item.posterUrl}
-            alt=""
-            width={360}
-            height={640}
-            loading={index < 2 ? 'eager' : 'lazy'}
-            decoding="async"
-            className={cn('absolute inset-0 size-full', item.landscape ? 'object-contain' : 'object-cover')}
-          />
-        )}
+        <div className="absolute inset-0">
+          <PosterImage src={item.posterUrl} width={360} height={640} priority={index < 2} className={item.landscape ? 'object-contain' : 'object-cover'} />
+        </div>
         {mode !== 'idle' && (
           <ShortPlayer hlsUrl={item.hlsUrl} landscape={item.landscape} mode={mode} muted={muted} onSoundBlocked={onSoundBlocked} onSkip={onSkip} />
         )}
