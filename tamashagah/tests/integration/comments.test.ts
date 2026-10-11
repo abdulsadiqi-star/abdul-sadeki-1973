@@ -339,6 +339,19 @@ describe('listing', () => {
     expect(page3.items.at(-1)!.body).toBe('دیدگاه شماره 1');
   });
 
+  it('keeps paginating without skipping when the cursor comment disappears between requests', async () => {
+    const { fan, video } = await setup();
+    await seedMany(video.id, fan.id, 8);
+    const p1 = await getCommentPage(video.id, null, { limit: 3 });
+    expect(p1.items.map((c) => c.body)).toEqual(['دیدگاه شماره 8', 'دیدگاه شماره 7', 'دیدگاه شماره 6']);
+    // the author deletes the last comment of the page before the viewer asks for more
+    await db.comment.update({ where: { id: p1.items.at(-1)!.id }, data: { status: 'DELETED' } });
+    const p2 = await getCommentPage(video.id, null, { limit: 3, cursor: p1.nextCursor });
+    expect(p2.items.map((c) => c.body)).toEqual(['دیدگاه شماره 5', 'دیدگاه شماره 4', 'دیدگاه شماره 3']);
+    // an unknown cursor ends the list instead of restarting it
+    expect((await getCommentPage(video.id, null, { limit: 3, cursor: 'cknonexistent0000000000000' })).items).toEqual([]);
+  });
+
   it('shows only APPROVED comments publicly, plus the author’s own PENDING one', async () => {
     const { fan, other, video } = await setup();
     await db.comment.createMany({

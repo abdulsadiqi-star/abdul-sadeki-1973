@@ -1,6 +1,7 @@
 import 'server-only';
 import { db } from '@/lib/db';
 import { mediaUrl } from '@/lib/media-url';
+import { keysetAfter } from '@/features/engagement/keyset';
 import type { NotificationType } from '@/generated/prisma/enums';
 
 export type NotificationItem = {
@@ -22,11 +23,15 @@ export async function listNotifications(
   opts: { limit?: number; cursor?: string | null; unreadOnly?: boolean } = {},
 ): Promise<NotificationPage> {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+  // Keyset pagination (see engagement/keyset.ts): the cursor row may have been marked read since the last page.
+  const cursorRow = opts.cursor
+    ? await db.notification.findFirst({ where: { id: opts.cursor, userId }, select: { id: true, createdAt: true } })
+    : null;
+  if (opts.cursor && !cursorRow) return { items: [], nextCursor: null };
   const rows = await db.notification.findMany({
-    where: { userId, ...(opts.unreadOnly ? { readAt: null } : {}) },
+    where: { userId, ...(opts.unreadOnly ? { readAt: null } : {}), ...(cursorRow ? keysetAfter(cursorRow) : {}) },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
-    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     include: {
       actor: { select: { displayName: true, avatarKey: true, channel: { select: { name: true, avatarKey: true } } } },
     },

@@ -5,6 +5,7 @@ import { mediaUrl } from '@/lib/media-url';
 import type { Actor } from '@/lib/permissions';
 import { clamp } from '@/lib/utils';
 import { loadViewableVideo } from '@/features/watch/access';
+import { keysetAfter } from '@/features/engagement/keyset';
 import { getReportedCommentIds } from '@/features/reports/service';
 import type { Prisma } from '@/generated/prisma/client';
 import type { CommentDTO, CommentPageDTO, RepliesPageDTO } from './dto';
@@ -88,11 +89,15 @@ export async function getCommentPage(
 
   const viewerId = actor?.id ?? null;
   const limit = clamp(opts.limit ?? COMMENT_PAGE_SIZE, 1, MAX_PAGE_SIZE);
+  // Keyset pagination: the cursor comment may have been deleted/hidden since the previous page was served.
+  const cursorRow = opts.cursor
+    ? await db.comment.findFirst({ where: { id: opts.cursor, videoId: video.id, rootId: null }, select: { id: true, createdAt: true } })
+    : null;
+  if (opts.cursor && !cursorRow) return { items: [], nextCursor: null, total: video.commentCount };
   const rows = await db.comment.findMany({
-    where: { videoId: video.id, rootId: null, ...visibleTo(viewerId) },
+    where: { videoId: video.id, rootId: null, AND: [visibleTo(viewerId), ...(cursorRow ? [keysetAfter(cursorRow, 'desc')] : [])] },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: limit + 1,
-    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     select: commentSelect,
   });
   const hasMore = rows.length > limit;
@@ -123,11 +128,14 @@ export async function getReplyPage(
   if (isCommentingOff(video)) return { items: [], nextCursor: null };
 
   const limit = clamp(opts.limit ?? REPLY_PAGE_SIZE, 1, MAX_PAGE_SIZE);
+  const cursorRow = opts.cursor
+    ? await db.comment.findFirst({ where: { id: opts.cursor, rootId: root.id }, select: { id: true, createdAt: true } })
+    : null;
+  if (opts.cursor && !cursorRow) return { items: [], nextCursor: null };
   const rows = await db.comment.findMany({
-    where: { rootId: root.id, ...visibleTo(viewerId) },
+    where: { rootId: root.id, AND: [visibleTo(viewerId), ...(cursorRow ? [keysetAfter(cursorRow, 'asc')] : [])] },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: limit + 1,
-    ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}),
     select: commentSelect,
   });
   const hasMore = rows.length > limit;
