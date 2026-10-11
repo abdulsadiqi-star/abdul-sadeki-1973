@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { ERRORS } from '@tus/server';
 import { getRedis, createBullConnection } from '@/lib/redis';
 import { RedisLocker } from '@/features/uploads/redis-locker';
+import { mapTusError } from '@/features/uploads/tus';
 
 const lockers: RedisLocker[] = [];
 const makeLocker = (options: { ttlMs?: number; acquireTimeoutMs?: number } = {}) => {
@@ -116,5 +117,18 @@ describe('RedisLocker', () => {
     await lock.unlock();
     expect(await redis.get('tuslock:mine')).toBe('someone-else');
     await redis.del('tuslock:mine');
+  });
+});
+
+describe('lock timeouts on the wire', () => {
+  it('are answered with 423 Locked (tus clients retry that; a plain 5xx on HEAD makes them start a new upload)', () => {
+    const mapped = mapTusError({} as never, ERRORS.ERR_LOCK_TIMEOUT);
+    expect(mapped?.status_code).toBe(423);
+    expect(JSON.parse(mapped!.body).error.code).toBe('LOCKED');
+  });
+
+  it('leaves other tus errors alone', () => {
+    expect(mapTusError({} as never, ERRORS.INVALID_OFFSET)).toBeUndefined();
+    expect(mapTusError({} as never, new Error('boom'))).toBeUndefined();
   });
 });

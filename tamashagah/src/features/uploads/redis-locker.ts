@@ -27,7 +27,7 @@ export type RedisLockerOptions = {
   prefix?: string;
   /** Lease length; renewed every third of it while the lock is held. */
   ttlMs?: number;
-  /** How long a request waits for a busy upload before giving up (HTTP 500 → the client retries). */
+  /** How long a request waits for a busy upload before giving up (surfaced as HTTP 423 → the client retries). */
   acquireTimeoutMs?: number;
 };
 

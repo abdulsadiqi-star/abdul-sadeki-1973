@@ -13,7 +13,7 @@
  */
 import path from 'node:path';
 import { FileStore } from '@tus/file-store';
-import { EVENTS, Server, type KvStore, type Upload } from '@tus/server';
+import { ERRORS, EVENTS, Server, type KvStore, type Upload } from '@tus/server';
 import { S3Store, type MetadataValue } from '@tus/s3-store';
 import { getCurrentUser, toActor, type CurrentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db';
@@ -124,8 +124,15 @@ function createDatastore() {
 // Error mapping
 // ---------------------------------------------------------------------------
 
-/** AppErrors thrown by our hooks become JSON bodies the browser client can show (Persian message + code). */
-function mapError(_req: TusRequest, err: Error | { status_code: number; body: string }) {
+/**
+ * - AppErrors thrown by our hooks become JSON bodies the browser client can show (Persian message + code).
+ * - "could not get the lock in time" becomes 423 Locked, the status tus clients RETRY on. Plain 5xx on HEAD makes
+ *   tus-js-client start a brand-new upload instead, which would orphan the old one.
+ */
+export function mapTusError(_req: TusRequest, err: Error | { status_code: number; body: string }) {
+  if ('status_code' in err && err.status_code === ERRORS.ERR_LOCK_TIMEOUT.status_code && err.body === ERRORS.ERR_LOCK_TIMEOUT.body) {
+    return { status_code: 423, body: JSON.stringify({ error: { code: 'LOCKED', message: 'این بارگذاری در حال استفاده است؛ کمی بعد دوباره تلاش می‌شود.' } }) };
+  }
   if (isAppError(err)) {
     const e: AppError = err;
     return {
@@ -218,7 +225,7 @@ export function getTusServer(): Server {
       return {};
     },
 
-    onResponseError: mapError,
+    onResponseError: mapTusError,
   });
 
   // DELETE (cancel) succeeded: drop the video row and sweep leftovers (S3 `.part` objects, ...).
