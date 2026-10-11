@@ -3,43 +3,25 @@
  * resuming after a page reload, and "somebody else's video is not yours".
  *
  * Needs the full stack (app + worker + Postgres + Redis + ffmpeg, see docs/testing.md). The creators are inserted
- * straight into the database (registration is rate limited to 5 per hour per address) and sign in through the real
- * login form.
+ * straight into the database by `support/db.ts` (registration is rate limited to 5 per hour per address) and sign in
+ * through the real login form.
  */
-import 'dotenv/config';
-import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { hashPassword } from '@/lib/auth/password';
-import { db } from '@/lib/db';
-import { newVideoId } from '@/lib/ids';
-import { buildChannelSearchName } from '@/lib/persian';
-import { generateFixture } from '../../scripts/make-test-video.mjs';
 import { E2E_PASSWORD, loginViaUi } from './helpers';
 
-const FIXTURE_DIR = path.join(os.tmpdir(), 'tg-e2e-fixtures');
 const READY_TIMEOUT = 150_000;
 
-async function createCreator(label: string) {
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const email = `${label}-${suffix}@example.test`;
-  const handle = `${label}-${suffix}`;
-  const user = await db.user.create({
-    data: {
-      email,
-      displayName: 'سازنده‌ی آزمایشی',
-      role: 'CREATOR',
-      passwordHash: await hashPassword(E2E_PASSWORD),
-      emailVerifiedAt: new Date(),
-    },
-  });
-  await db.channel.create({ data: { ownerId: user.id, handle, name: 'کانال آزمایشی', searchName: buildChannelSearchName('کانال آزمایشی', handle) } });
-  return { email, handle, userId: user.id };
+/** Run a database fixture command (see support/db.ts) and return its JSON result. */
+function dbCommand<T>(...args: string[]): T {
+  const out = execFileSync('pnpm', ['exec', 'tsx', '--env-file-if-exists=.env', 'tests/e2e/support/db.ts', ...args], { encoding: 'utf8' });
+  return JSON.parse(out.trim().split('\n').at(-1)!) as T;
 }
 
-test.afterAll(async () => {
-  await db.$disconnect();
-});
+const fixtureFile = (name: string, seconds?: number) => dbCommand<{ file: string }>('fixture', name, ...(seconds ? [String(seconds)] : [])).file;
+const createCreator = (label: string) => dbCommand<{ email: string; handle: string }>('creator', label, E2E_PASSWORD);
+const cleanup = (...handles: string[]) => dbCommand('cleanup', ...handles);
 
 const cardFor = (page: Page, name: string): Locator => page.getByTestId('upload-card').filter({ hasText: name });
 const videoIdOf = async (card: Locator) => {
@@ -59,7 +41,7 @@ test.describe('media: upload, process, edit, delete', () => {
   test('a creator uploads a video, watches it get processed, edits it and deletes it', async ({ page }) => {
     const creator = await createCreator('media');
     await loginViaUi(page, creator.email);
-    const file = await generateFixture('landscape-720p', { dir: FIXTURE_DIR, seconds: 3 });
+    const file = fixtureFile('landscape-720p', 3);
     const fileName = path.basename(file);
 
     // --- upload --------------------------------------------------------------------------------------------------
@@ -132,14 +114,14 @@ test.describe('media: upload, process, edit, delete', () => {
     await expect(page).toHaveURL(/\/studio\/videos$/);
     await expect(page.getByTestId('video-card').filter({ hasText: title })).toHaveCount(0);
     expect((await page.request.get(`/media/videos/${id}/hls/master.m3u8`)).status()).toBe(404);
-    await db.channel.delete({ where: { handle: creator.handle } }).catch(() => undefined);
+    cleanup(creator.handle);
   });
 
   test('uploads can be paused and resumed, and continue after the page was reloaded', async ({ page }) => {
     test.setTimeout(240_000);
     const creator = await createCreator('resume');
     await loginViaUi(page, creator.email);
-    const file = await generateFixture('large-1080p', { dir: FIXTURE_DIR });
+    const file = fixtureFile('large-1080p');
     const fileName = path.basename(file);
     page.on('dialog', (dialog) => void dialog.accept()); // "leave this page?" while an upload runs
 
@@ -182,15 +164,13 @@ test.describe('media: upload, process, edit, delete', () => {
     await expect(resumed).toHaveAttribute('data-phase', /^(finishing|processing|ready)$/, { timeout: 150_000 });
     await expect(resumed).toHaveAttribute('data-phase', 'ready', { timeout: READY_TIMEOUT });
 
-    await db.channel.delete({ where: { handle: creator.handle } }).catch(() => undefined);
+    cleanup(creator.handle);
   });
 
   test('another creator can neither see nor touch your video', async ({ browser, page }) => {
     const owner = await createCreator('owner');
     const intruder = await createCreator('intruder');
-    const ownerVideo = await db.video.create({
-      data: { id: newVideoId(), channelId: (await db.channel.findUniqueOrThrow({ where: { handle: owner.handle } })).id, title: 'ویدیوی خصوصی من', visibility: 'PRIVATE', processingStatus: 'AWAITING_UPLOAD', sourceSizeBytes: 1000n },
-    });
+    const ownerVideo = dbCommand<{ id: string }>('upload-row', owner.handle);
 
     const other = await browser.newContext({ baseURL: test.info().project.use.baseURL });
     const otherPage = await other.newPage();
@@ -216,7 +196,6 @@ test.describe('media: upload, process, edit, delete', () => {
     await other.close();
     await anonymous.close();
     await page.close();
-    await db.video.delete({ where: { id: ownerVideo.id } });
-    await db.channel.deleteMany({ where: { handle: { in: [owner.handle, intruder.handle] } } }).catch(() => undefined);
+    cleanup(owner.handle, intruder.handle);
   });
 });

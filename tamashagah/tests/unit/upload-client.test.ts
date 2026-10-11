@@ -6,6 +6,7 @@ import {
   UploadEngine,
   type ConfirmResult,
   type TransportEvents,
+  type TransportHints,
   type UploadItem,
   type UploadTransport,
 } from '@/features/uploads/client/engine';
@@ -96,6 +97,7 @@ class FakeTransport implements UploadTransport {
   constructor(
     readonly file: File,
     readonly events: TransportEvents,
+    readonly hints?: TransportHints,
   ) {}
   start() {
     this.starts++;
@@ -134,8 +136,8 @@ function setup(overrides: { confirm?: (id: string) => Promise<ConfirmResult>; ma
   const confirm = vi.fn(overrides.confirm ?? (async () => ({ ok: true }) as ConfirmResult));
   const discard = vi.fn(async () => undefined);
   const engine = new UploadEngine({
-    createTransport: (f, events) => {
-      const t = new FakeTransport(f, events);
+    createTransport: (f, events, hints) => {
+      const t = new FakeTransport(f, events, hints);
       transports.push(t);
       return t;
     },
@@ -426,6 +428,14 @@ describe('UploadEngine', () => {
     transports[0]!.created();
     expect(engine.getSnapshot()).not.toBe(first);
     expect(engine.getServerSnapshot()).toHaveLength(0);
+  });
+
+  it('continues a specific unfinished upload when asked to (resume from the pending list)', () => {
+    const { engine, transports } = setup();
+    engine.add([file('a.mp4')], { resumeVideoId: 'Vid00000009' });
+    expect(transports[0]!.hints).toEqual({ resumeUrl: '/api/upload/Vid00000009' });
+    engine.add([file('b.mp4', 1_000_000, 2)]);
+    expect(transports[1]!.hints).toBeUndefined();
   });
 
   it('marks an upload as resumed when the transport found the earlier one', () => {

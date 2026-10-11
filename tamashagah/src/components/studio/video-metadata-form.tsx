@@ -92,7 +92,7 @@ function OptionCard({ htmlFor, children, className }: { htmlFor: string; childre
 // Field groups
 // ---------------------------------------------------------------------------
 
-function BasicFields({ form, ids }: { form: UseFormReturn<MetadataFormValues>; ids: string }) {
+function BasicFields({ form }: { form: UseFormReturn<MetadataFormValues> }) {
   return (
     <>
       <FormField
@@ -120,7 +120,7 @@ function BasicFields({ form, ids }: { form: UseFormReturn<MetadataFormValues>; i
           <FormItem>
             <FormLabel>توضیحات</FormLabel>
             <FormControl>
-              <Textarea {...field} id={`${ids}-description`} dir="auto" rows={5} placeholder="درباره‌ی ویدیو بنویسید…" />
+              <Textarea {...field} dir="auto" rows={5} placeholder="درباره‌ی ویدیو بنویسید…" />
             </FormControl>
             <div className="flex gap-2">
               <FormMessage />
@@ -458,7 +458,7 @@ export function VideoMetadataForm({ videoId, initial, categories, context, layou
               <CardDescription>عنوان و توضیحات اولین چیزی است که بیننده‌ها می‌بینند.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <BasicFields form={form} ids={ids} />
+              <BasicFields form={form} />
               <DiscoveryFields form={form} categories={categories} showLanguage />
             </CardContent>
           </Card>
@@ -507,7 +507,7 @@ export function VideoMetadataForm({ videoId, initial, categories, context, layou
     <Form {...form}>
       <form onSubmit={save} noValidate className={cn('space-y-4', className)} aria-label="اطلاعات ویدیو">
         <FormError message={formError} />
-        <BasicFields form={form} ids={ids} />
+        <BasicFields form={form} />
         <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
           <CollapsibleTrigger asChild>
             <Button type="button" variant="ghost" size="sm" className="-ms-2" aria-expanded={moreOpen}>

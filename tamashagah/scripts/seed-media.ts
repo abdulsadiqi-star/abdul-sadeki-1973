@@ -24,7 +24,7 @@ import { completeUpload, createAwaitingUpload } from '../src/features/uploads/se
 import { updateVideoMetadata } from '../src/features/videos-studio/service';
 import { videoMetadataSchema } from '../src/features/videos-studio/schemas';
 import { processVideo } from '../worker/pipeline/process-video';
-import { generateFixture, type FixtureName } from './make-test-video.mjs';
+import type { FixtureName } from './make-test-video.mjs';
 
 type Demo = {
   channel: string;
@@ -73,6 +73,8 @@ async function main() {
   const embedded = (await queue.getWorkers()).length === 0;
   console.log(embedded ? 'No worker attached: processing in-process.' : 'A worker is attached: waiting for it to process each video.');
 
+  // Dynamic import: the generator is an ES module with top-level await, this script runs as CommonJS under tsx.
+  const { generateFixture } = await import('./make-test-video.mjs');
   const clips = new Map<FixtureName, string>();
   for (const name of new Set(DEMOS.map((d) => d.clip))) clips.set(name, await generateFixture(name, { dir: FIXTURE_DIR, seconds: 6 }));
 
