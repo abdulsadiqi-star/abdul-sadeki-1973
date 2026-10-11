@@ -56,3 +56,19 @@ export function describePeriod(fromKey: string, toKey: string, f: Formatter): st
   const sameYear = dayKeyToJalali(fromKey).jy === dayKeyToJalali(toKey).jy;
   return `${f.date(from, sameYear ? 'monthDay' : 'long')} تا ${f.date(to, 'long')}`;
 }
+
+/**
+ * Right-to-left mark. Chart axes are LTR on purpose (time runs left → right), but an SVG `<text>` inherits that
+ * direction, and the bidi algorithm then draws a Persian label such as «۲۱ شهریور» with the digits on the LEFT of
+ * the word (read right to left: «شهریور ۲۱»). Wrapping the label in RLM at both ends gives the run an RTL context
+ * (digits to the right of the word, as a Persian reader expects) WITHOUT changing the text element's direction,
+ * so `text-anchor` and the axis layout stay exactly as Recharts computed them.
+ */
+export const RLM = '\u200F';
+
+export const rtlLabel = (text: string): string => `${RLM}${text}${RLM}`;
+
+/** Y-axis tick: plain digits below 10 000 ("۱٬۸۰۰"), compact above ("۱۲ هزار"); always RTL-marked. */
+export function formatAxisNumber(value: number, f: Formatter): string {
+  return rtlLabel(Math.abs(value) >= 10_000 ? f.compact(value) : f.number(value));
+}

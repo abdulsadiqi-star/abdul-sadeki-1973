@@ -12,7 +12,7 @@ import type { Granularity } from '@/lib/analytics/ranges';
 import type { SeriesPoint } from '@/lib/analytics/series';
 import { metricLabels } from '@/features/analytics/labels';
 import { cn } from '@/lib/utils';
-import { buildChartRows, describePeriod, type ChartRow } from './chart-model';
+import { buildChartRows, describePeriod, formatAxisNumber, rtlLabel, type ChartRow } from './chart-model';
 
 type MetricKey = 'views' | 'watchMinutes' | 'newFollowers' | 'likes';
 type Axis = 'views' | 'minutes' | 'engagement';
@@ -135,7 +135,7 @@ export function AnalyticsChart({
   const isEmpty = rows.every((r) => r.views === 0 && r.watchSeconds === 0 && r.likes === 0 && r.newFollowers === 0);
   const period = rows.length > 0 ? describePeriod(rows[0]!.fromKey, rows[rows.length - 1]!.toKey, f) : '';
   const showDots = rows.length <= 40;
-  const axisNumber = (value: number) => (Math.abs(value) >= 10_000 ? f.compact(value) : f.number(value));
+  const axisNumber = (value: number) => formatAxisNumber(value, f);
 
   return (
     <Card>
@@ -196,7 +196,7 @@ export function AnalyticsChart({
                   <CartesianGrid vertical={false} strokeDasharray="3 4" stroke="var(--border)" />
                   <XAxis
                     dataKey="key"
-                    tickFormatter={(key: string) => labelByKey.get(key) ?? key}
+                    tickFormatter={(key: string) => rtlLabel(labelByKey.get(key) ?? key)}
                     tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
                     tickLine={false}
                     axisLine={{ stroke: 'var(--border)' }}
