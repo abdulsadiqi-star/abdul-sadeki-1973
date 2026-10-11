@@ -123,7 +123,8 @@ export type ReportListParams = z.output<typeof reportListSchema>;
 
 export const videoListSchema = z.object({
   q: text(100),
-  processing: oneOf(['ALL', 'AWAITING_UPLOAD', 'QUEUED', 'PROCESSING', 'READY', 'FAILED'], 'ALL'),
+  /** `PENDING` = queued or being processed (the overview links to it). */
+  processing: oneOf(['ALL', 'AWAITING_UPLOAD', 'QUEUED', 'PROCESSING', 'PENDING', 'READY', 'FAILED'], 'ALL'),
   publish: oneOf(['ALL', 'DRAFT', 'SCHEDULED', 'PUBLISHED'], 'ALL'),
   visibility: oneOf(['ALL', 'PUBLIC', 'UNLISTED', 'PRIVATE'], 'ALL'),
   takedown: oneOf(['ALL', 'YES', 'NO'], 'ALL'),
