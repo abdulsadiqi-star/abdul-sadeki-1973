@@ -9,7 +9,7 @@
  *
  * Every change is recorded as a ModerationAction. Runtime-agnostic (no next/* imports).
  */
-import { db } from '@/lib/db';
+import { db, type Prisma } from '@/lib/db';
 import { Errors } from '@/lib/errors';
 import type { CommentStatus, ModerationActionType } from '@/generated/prisma/enums';
 
@@ -36,9 +36,16 @@ export type CommentStatusChange = {
 export async function applyCommentStatus(
   commentId: string,
   status: CommentStatus,
-  opts: { actorId: string | null; note?: string | null },
+  opts: {
+    actorId: string | null;
+    note?: string | null;
+    /** Join the caller's transaction instead of opening one (the admin panel commits report resolution + change + audit together). */
+    tx?: Prisma.TransactionClient;
+    /** Extras for the audit row (admin panel): the report that triggered the change, an action-type override, more metadata. */
+    audit?: { reportId?: string | null; type?: ModerationActionType; meta?: Record<string, unknown> };
+  },
 ): Promise<CommentStatusChange | null> {
-  return db.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient) => {
     const comment = await tx.comment.findUnique({
       where: { id: commentId },
       select: { id: true, status: true, videoId: true, rootId: true, authorId: true, video: { select: { channelId: true } } },
@@ -61,15 +68,17 @@ export async function applyCommentStatus(
     await tx.moderationAction.create({
       data: {
         actorId: opts.actorId,
-        type: ACTION_FOR[status],
+        type: opts.audit?.type ?? ACTION_FOR[status],
         commentId,
         videoId: comment.videoId,
         channelId: comment.video.channelId,
         targetUserId: comment.authorId,
+        reportId: opts.audit?.reportId ?? null,
         reason: opts.note ?? null,
-        meta: { from: comment.status, to: status },
+        meta: { from: comment.status, to: status, ...opts.audit?.meta } as Prisma.InputJsonObject,
       },
     });
     return { commentId, from: comment.status, to: status, videoId: comment.videoId, authorId: comment.authorId };
-  });
+  };
+  return opts.tx ? run(opts.tx) : db.$transaction(run);
 }
