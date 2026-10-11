@@ -169,13 +169,13 @@ export function VideoLibrary({ items, view, showUploadTile }: { items: StudioVid
       <ul
         data-testid="video-collection"
         data-view={view}
-        className={view === 'grid' ? 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3'}
+        className={view === 'grid' ? 'grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6' : 'space-y-3'}
       >
         {view === 'grid' && showUploadTile && (
           <li>
             <Link
               href="/studio/upload"
-              className="flex h-full min-h-56 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed bg-card/50 p-6 text-center text-muted-foreground transition-colors outline-none hover:border-primary hover:bg-accent/40 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="flex h-full min-h-44 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed bg-card/50 p-4 text-center text-muted-foreground transition-colors outline-none hover:border-primary hover:bg-accent/40 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
                 <Plus aria-hidden="true" className="size-6" />
