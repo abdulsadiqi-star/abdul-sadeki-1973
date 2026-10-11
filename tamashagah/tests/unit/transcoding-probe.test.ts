@@ -75,7 +75,7 @@ describe('ffprobe parsing', () => {
   });
 
   it('falls back to the stream duration, and reports a missing duration instead of guessing', () => {
-    expect(parseProbe(probe([video({ duration: '7.25' })], { format_name: 'x' })).durationSeconds).toBe(7.25);
+    expect(parseProbe(probe([video({ duration: '7.25' })], { format_name: 'avi' })).durationSeconds).toBe(7.25);
     const missing = parseProbe(probe([video()], { format_name: 'matroska,webm' }));
     expect(missing.durationMissing).toBe(true);
     expect(withMeasuredDuration(missing, 42).durationSeconds).toBe(42);
