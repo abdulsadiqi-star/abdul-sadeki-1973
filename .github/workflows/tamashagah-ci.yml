@@ -128,6 +128,8 @@ jobs:
         run: echo "SESSION_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - run: pnpm db:deploy
       - run: pnpm db:seed
+      - name: Demo catalogue (the discovery and admin specs search and moderate it)
+        run: pnpm exec tsx --env-file-if-exists=.env scripts/seed-discovery.ts
       - run: pnpm build
       - name: Start web app and worker
         run: |
