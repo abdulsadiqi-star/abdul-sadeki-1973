@@ -12,6 +12,7 @@ import { ShortCard } from '@/components/shorts/short-card';
 import { SectionHeading, VideoGrid } from '@/components/video/video-grid';
 import { getFormatter } from '@/lib/format-server';
 import { getCategories } from '@/features/categories/queries';
+import { socialMetadata } from '@/features/discovery/seo';
 import { getTrendingVideos } from '@/features/recommendations';
 import { searchTypeLabels } from '@/features/search/labels';
 import { searchChannels, searchVideos } from '@/features/search/queries';
@@ -32,12 +33,14 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const p = parseSearchState(await searchParams);
   const parameterized = p.q !== '' || hasActiveFilters(p) || p.page > 1 || p.sort !== defaultSortFor(p.q !== '');
+  const title = p.q ? `نتایج جستجو برای «${p.q}»` : 'جستجو و پرطرفدارها';
+  const description = 'در تماشاگاه ویدیو، شورتس و کانال‌ها را جستجو کنید؛ با فیلتر تاریخ، مدت و دسته‌بندی.';
   return {
-    title: p.q ? `نتایج جستجو برای «${p.q}»` : 'جستجو و پرطرفدارها',
-    description: 'در تماشاگاه ویدیو، شورتس و کانال‌ها را جستجو کنید؛ با فیلتر تاریخ، مدت و دسته‌بندی.',
+    title,
+    description,
     // Result pages carry parameters: keep them out of the index (robots.txt disallows them too) but let links be followed.
     robots: parameterized ? { index: false, follow: true } : undefined,
-    alternates: { canonical: '/search' },
+    ...socialMetadata({ title, description, path: '/search' }),
   };
 }
 

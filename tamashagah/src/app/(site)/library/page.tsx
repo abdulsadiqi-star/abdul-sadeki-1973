@@ -31,7 +31,7 @@ export default async function LibraryPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="کتابخانه‌ی من" description="تاریخچه، ذخیره‌ها، پسندها، کانال‌ها و لیست‌های پخش شما یک‌جا." className="mb-0" />
+      <PageHeader title="کتابخانه‌ی من" description="تاریخچه، ذخیره‌ها، پسندها، کانال‌ها و لیست‌های پخش شما یک‌جا." />
       <LibraryTabs active="overview" />
 
       {empty ? (

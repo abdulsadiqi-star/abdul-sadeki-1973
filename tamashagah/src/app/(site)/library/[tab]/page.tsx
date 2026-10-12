@@ -113,7 +113,7 @@ export default async function LibraryTabPage({ params, searchParams }: Props) {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={libraryTabTitles[tab]} actions={actions} className="mb-0" />
+      <PageHeader title={libraryTabTitles[tab]} actions={actions} />
       <LibraryTabs active={tab} />
       {body}
       <Pagination page={page} pageCount={pageCount} href={href} className="pt-2" />

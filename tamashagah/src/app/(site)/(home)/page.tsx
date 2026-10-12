@@ -15,6 +15,7 @@ import { CategoryChips } from '@/features/discovery/components/category-chips';
 import { HomeSection } from '@/features/discovery/components/home-section';
 import { JsonLd } from '@/features/discovery/components/json-ld';
 import { VideoRail } from '@/features/discovery/components/video-rail';
+import { ServiceWorkerRegister } from '@/features/info/components/service-worker-register';
 import { getHomeFeed } from '@/features/recommendations';
 
 // The default title ("تماشاگاه — …") comes from the root layout.
@@ -39,6 +40,7 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-10">
+      <ServiceWorkerRegister />
       <h1 className="sr-only">{siteConfig.name} — {siteConfig.tagline}</h1>
       <JsonLd
         data={{

@@ -20,7 +20,7 @@ import { randomToken } from '../src/lib/ids';
 import { hashPassword } from '../src/lib/auth/password';
 import { db } from '../src/lib/db';
 import { watchLaterPlaylistId } from '../src/lib/ids';
-import { buildChannelSearchName } from '../src/lib/persian';
+import { buildChannelSearchName, toPersianDigits } from '../src/lib/persian';
 import { chunk } from '../src/lib/utils';
 import { createMediaVideo, disposeFixtures, mapLimit, seededRng, stableVideoId, storeChannelImages } from './discovery-fixtures';
 
@@ -145,13 +145,17 @@ async function main() {
   // --- accounts: one hash, reused (nobody can log in as the extra demo accounts) --------------------------------------
   const unusablePasswordHash = await hashPassword(`${randomToken(18)}-A1`);
   const ensureUser = async (email: string, displayName: string, role: 'USER' | 'CREATOR') => {
-    const found = await db.user.findUnique({ where: { email }, select: { id: true } });
-    if (found) return found.id;
+    const found = await db.user.findUnique({ where: { email }, select: { id: true, displayName: true } });
+    if (found) {
+      if (found.displayName !== displayName) await db.user.update({ where: { id: found.id }, data: { displayName } }); // e.g. older runs used Latin digits
+      return found.id;
+    }
     return (await db.user.create({ data: { email, displayName, role, emailVerifiedAt: new Date(), passwordHash: unusablePasswordHash }, select: { id: true } })).id;
   };
 
   const viewers: string[] = [];
-  for (let i = 1; i <= 30; i++) viewers.push(await ensureUser(`demo-viewer-${String(i).padStart(2, '0')}@tamashagah.test`, `بیننده ${i}`, 'USER'));
+  // Persian digits in the display name, like everything else a Persian reader sees ("بیننده ۱۵")
+  for (let i = 1; i <= 30; i++) viewers.push(await ensureUser(`demo-viewer-${String(i).padStart(2, '0')}@tamashagah.test`, `بیننده ${toPersianDigits(i)}`, 'USER'));
   console.log(`✔ ${viewers.length} demo viewers`);
 
   // --- channels -------------------------------------------------------------------------------------------------------
