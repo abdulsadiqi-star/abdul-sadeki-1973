@@ -134,6 +134,11 @@ export function getEnv(): Env {
     throw new Error(`Invalid environment configuration:\n${lines.join('\n')}\nSee .env.example.`);
   }
   cached = parsed.data;
+  if (cached.NODE_ENV === 'production' && cached.APP_URL.startsWith('https://') && cached.TRUSTED_PROXY_HOPS === 0 && process.env.NEXT_PHASE !== 'phase-production-build') {
+    // Behind TLS there is (almost) always a reverse proxy; with 0 trusted hops the client IP is unknown and all visitors share one
+    // rate-limit bucket (login/register/reset), which one abuser could exhaust. Say so loudly instead of failing the start-up.
+    console.warn('[tamashagah] APP_URL is https but TRUSTED_PROXY_HOPS=0: client IPs are unknown and auth rate limits are shared by everybody. Set TRUSTED_PROXY_HOPS to the number of reverse proxies in front of the app.');
+  }
   return cached;
 }
 

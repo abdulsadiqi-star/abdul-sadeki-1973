@@ -148,8 +148,8 @@ per-request nonces — documented residual risk, mitigated by the absence of any
 An independent read-only review of the merged code found 10 items. **Fixed:** open redirect through TAB/control characters in `safeRedirectPath`
 (now rejects control characters and re-parses the origin); moderators who own a channel could use studio mutations on other channels without
 policy or audit (studio is now strictly owner-only, moderators use `/admin`); public video segments were cached `immutable` for a year (now 1 h; only
-token-keyed posters/avatars/banners stay immutable); FFmpeg/FFprobe now run with `-protocol_whitelist file`; tickets and copyright notices need a verified e-mail; `NEW_FOLLOWER` notifications are deduplicated per follower per day. **Accepted and documented**
-(`known-limitations.md`): shared auth rate-limit bucket when `TRUSTED_PROXY_HOPS=0`, upload quota counted from existing rows, registration e-mail enumeration, reply-counter race (nightly reconcile).
+token-keyed posters/avatars/banners stay immutable); FFmpeg/FFprobe now run with `-protocol_whitelist file`; tickets and copyright notices need a verified e-mail; `NEW_FOLLOWER` notifications are deduplicated per follower per day; replying locks the thread root row (no reply/counter drift against a concurrent delete); production start-up warns when https is used with `TRUSTED_PROXY_HOPS=0`. **Accepted and documented**
+(`known-limitations.md`): shared auth rate-limit bucket when `TRUSTED_PROXY_HOPS=0`, upload quota counted from existing rows, registration e-mail enumeration (nightly reconcile).
 
 ## 13. Reporting a vulnerability
 

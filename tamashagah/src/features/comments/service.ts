@@ -94,11 +94,11 @@ export async function postComment(
       });
       if (!parent || parent.videoId !== video.id || parent.status !== 'APPROVED') throw Errors.notFound('دیدگاهی که می‌خواهید به آن پاسخ دهید پیدا نشد.');
       rootId = parent.rootId ?? parent.id;
-      if (rootId !== parent.id) {
-        // Replying to a reply: the thread must still be public.
-        const root = await tx.comment.findUnique({ where: { id: rootId }, select: { status: true } });
-        if (root?.status !== 'APPROVED') throw Errors.notFound('دیدگاهی که می‌خواهید به آن پاسخ دهید پیدا نشد.');
-      }
+      // Lock the thread root, then re-check it: a concurrent delete/reject of the root must not interleave with this
+      // reply (otherwise a reply could be created, and counters bumped, under a thread that was just removed).
+      await tx.$queryRaw`SELECT id FROM "Comment" WHERE id = ${rootId} FOR UPDATE`;
+      const root = await tx.comment.findUnique({ where: { id: rootId }, select: { status: true } });
+      if (root?.status !== 'APPROVED') throw Errors.notFound('دیدگاهی که می‌خواهید به آن پاسخ دهید پیدا نشد.');
       parentId = parent.id;
       replyToUserId = parent.authorId;
     }
