@@ -13,7 +13,7 @@ import { randomToken } from '@/lib/ids';
 import { processImage } from '@/lib/images';
 import { logger } from '@/lib/logger';
 import { buildVideoSearchFields } from '@/lib/persian';
-import { canManageVideo, isListedPublicly, type Actor } from '@/lib/permissions';
+import { isListedPublicly, ownsChannel, type Actor } from '@/lib/permissions';
 import { enqueueVideoCleanup, enqueueVideoProcessing, VIDEO_JOB_ATTEMPTS } from '@/lib/queue';
 import { getStorage, keys, type StorageDriver } from '@/lib/storage';
 import { detectKind, type KindChoice } from '@/features/transcoding/kind';
@@ -61,7 +61,8 @@ type ManagedVideo = Prisma.VideoGetPayload<{ select: typeof managedSelect }>;
 /** Load a video the actor may manage, or throw NOT_FOUND (never 403: existence must not leak). */
 export async function loadManagedVideo(actor: Actor, videoId: string): Promise<ManagedVideo> {
   const video = await db.video.findUnique({ where: { id: videoId }, select: managedSelect });
-  if (!video || !canManageVideo(actor, { channelId: video.channelId })) throw Errors.notFound(studioMessages.notFound);
+  // Owner only: moderators act through the staff panel (policy matrix + audit row), never through studio mutations.
+  if (!video || !ownsChannel(actor, video.channelId)) throw Errors.notFound(studioMessages.notFound);
   return video;
 }
 

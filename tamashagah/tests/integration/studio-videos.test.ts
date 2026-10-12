@@ -146,16 +146,13 @@ describe('updateVideoAction: who may edit', () => {
     expect(fail(await updateVideoAction({ id: 'AAAAAAAAAAA', metadata: meta() })).message).toBe(result.message);
   });
 
-  it('moderators with a channel may edit (canManageVideo); the search body keeps the VIDEO’s channel name', async () => {
+  it('moderators with a channel can NOT edit other channels\u2019 videos through the studio (they use the audited staff panel)', async () => {
     const owner = await creator();
     const video = await createVideo(owner.channel!.id);
     const moderator = await createUser({ role: 'MODERATOR', withChannel: true });
     await loginAs(moderator.id);
-    expect((await updateVideoAction({ id: video.id, metadata: meta({ title: 'ویرایش ناظر' }) })).ok).toBe(true);
-    const saved = await db.video.findUniqueOrThrow({ where: { id: video.id } });
-    expect(saved.title).toBe('ویرایش ناظر');
-    expect(saved.searchBody).toContain(owner.channel!.name.toLowerCase().replace(/\s+/g, ' '));
-    expect(saved.searchBody).not.toContain(moderator.channel!.name.toLowerCase().replace(/\s+/g, ' '));
+    expect(await updateVideoAction({ id: video.id, metadata: meta({ title: 'ویرایش ناظر' }) })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect((await db.video.findUniqueOrThrow({ where: { id: video.id } })).title).not.toBe('ویرایش ناظر');
   });
 
   it('is rate limited per user', async () => {

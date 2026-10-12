@@ -171,7 +171,7 @@ test.describe('moderation flow', () => {
 
     // 1. before: everybody can find the video and fetch its files
     const posterUrl = `/media/${s.video.posterKey}`;
-    await visitor.page.goto('/');
+    await visitor.page.goto(`/search?q=${encodeURIComponent(s.video.title)}`); // search is uncached; the home feed is cached for 60 s by design
     await expect(visitor.page.getByRole('link', { name: s.video.title }).first()).toBeVisible();
     expect((await visitor.page.request.get(posterUrl)).status()).toBe(200);
     const watchIsReal = await watchPageIsReal(visitor.page, s.video.id);
@@ -222,7 +222,7 @@ test.describe('moderation flow', () => {
 
     // 5. the visitor no longer finds it and gets a 404 for its files; staff still can see it.
     //    (the media route remembers a video's visibility for up to 10 s, hence the polling)
-    await visitor.page.goto('/');
+    await visitor.page.goto(`/search?q=${encodeURIComponent(s.video.title)}`); // search is uncached; the home feed is cached for 60 s by design
     await expect(visitor.page.getByRole('link', { name: s.video.title })).toHaveCount(0);
     await expect.poll(async () => (await visitor.page.request.get(posterUrl)).status(), { timeout: 20_000 }).toBe(404);
     expect((await page.request.get(posterUrl)).status()).toBe(200);
@@ -246,7 +246,7 @@ test.describe('moderation flow', () => {
     await expect(page.getByRole('listitem').filter({ hasText: s.video.title })).toHaveCount(0); // no longer in the "taken down" list
     expect(dbState({ videoId: s.video.id }).video.takedown).toBe(false);
 
-    await visitor.page.goto('/');
+    await visitor.page.goto(`/search?q=${encodeURIComponent(s.video.title)}`); // search is uncached; the home feed is cached for 60 s by design
     await expect(visitor.page.getByRole('link', { name: s.video.title }).first()).toBeVisible();
     await expect.poll(async () => (await visitor.page.request.get(posterUrl)).status(), { timeout: 20_000 }).toBe(200);
     if (watchIsReal) expect((await visitor.page.goto(`/watch/${s.video.id}`))?.status()).toBe(200);

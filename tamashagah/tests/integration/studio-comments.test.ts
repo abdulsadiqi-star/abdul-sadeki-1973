@@ -104,12 +104,12 @@ describe('moderateComment', () => {
     expect(await commentCount(video.id)).toBe(0);
   });
 
-  it('lets platform moderators moderate any channel', async () => {
+  it('does not let platform moderators moderate through the studio (the staff panel does, with policy + audit)', async () => {
     const { fan, video } = await setup();
     const moderator = await createUser({ role: 'MODERATOR' });
     const c = await seed(video.id, fan.id, 'دیدگاه', 'APPROVED');
-    expect(await moderateComment(viewerOf(moderator), c.id, 'SPAM')).toEqual({ changed: true });
-    expect(await db.moderationAction.findFirstOrThrow({ where: { commentId: c.id } })).toMatchObject({ actorId: moderator.id });
+    await expect(moderateComment(viewerOf(moderator), c.id, 'SPAM')).rejects.toMatchObject({ status: 404 });
+    expect((await db.comment.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('APPROVED');
   });
 
   it('a deleted root takes its live replies with it so counters cannot drift', async () => {

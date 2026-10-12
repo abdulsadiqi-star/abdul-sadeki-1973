@@ -60,8 +60,14 @@ export function referrerHost(referrer: string | null | undefined, selfHost?: str
 /** Only allow same-site relative redirect targets ("/studio", never "//evil.com" or "https://..."). */
 export function safeRedirectPath(input: string | null | undefined, fallback = '/'): string {
   if (!input) return fallback;
-  if (!input.startsWith('/') || input.startsWith('//') || input.includes('\\') || /[\r\n]/.test(input)) {
+  // No control characters at all (TAB/LF/CR are stripped by URL parsers, so "/\t/evil.example" would become "//evil.example"),
+  // no backslashes, no protocol-relative paths; the value must also parse back to the same origin.
+  if (!input.startsWith('/') || input.startsWith('//') || /[\u0000-\u001f\u007f\\]/.test(input)) return fallback;
+  try {
+    const url = new URL(input, 'http://safe.invalid');
+    if (url.origin !== 'http://safe.invalid') return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
     return fallback;
   }
-  return input;
 }

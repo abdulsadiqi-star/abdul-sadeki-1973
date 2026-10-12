@@ -143,6 +143,15 @@ per-request nonces — documented residual risk, mitigated by the absence of any
 | Media delivery visibility | `tests/integration/media-delivery.test.ts` |
 | Accessibility (axe, WCAG 2.1 A/AA) | `tests/e2e/a11y.spec.ts` and per-feature e2e specs |
 
-## 12. Reporting a vulnerability
+## 12. Independent review (findings and status)
+
+An independent read-only review of the merged code found 10 items. **Fixed:** open redirect through TAB/control characters in `safeRedirectPath`
+(now rejects control characters and re-parses the origin); moderators who own a channel could use studio mutations on other channels without
+policy or audit (studio is now strictly owner-only, moderators use `/admin`); public video segments were cached `immutable` for a year (now 1 h; only
+token-keyed posters/avatars/banners stay immutable); FFmpeg/FFprobe now run with `-protocol_whitelist file`. **Accepted and documented**
+(`known-limitations.md`): shared auth rate-limit bucket when `TRUSTED_PROXY_HOPS=0`, upload quota counted from existing rows, follow/unfollow
+notification spam, registration e-mail enumeration, unverified users can open tickets, reply-counter race (nightly reconcile).
+
+## 13. Reporting a vulnerability
 
 Operators should publish a contact (e.g. `/.well-known/security.txt`) before launch. This repository does not name one.

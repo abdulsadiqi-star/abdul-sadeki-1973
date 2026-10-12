@@ -183,11 +183,11 @@ describe('quick approve (dashboard)', () => {
     }
   });
 
-  it('lets a moderator approve on any channel (canModerateComments) but not an ordinary user', async () => {
+  it('answers 404 to moderators and ordinary users who do not own the channel', async () => {
     const { comment } = await pendingComment();
     const moderator = await createUser({ role: 'MODERATOR' });
     await loginAs(moderator.id);
-    expect(await approveCommentAction({ commentId: comment.id })).toEqual({ ok: true, data: { approved: true } });
+    expect(await approveCommentAction({ commentId: comment.id })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
     const plain = await createUser();
     const second = await pendingComment();
     await loginAs(plain.id);

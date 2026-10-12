@@ -56,7 +56,7 @@ describe('headers of delivered media', () => {
 
     const segment = await get(k.segment);
     expect(segment.headers.get('content-type')).toBe('video/mp2t');
-    expect(segment.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(segment.headers.get('cache-control')).toBe('public, max-age=3600'); // segments can disappear on takedown: never immutable
     expect(segment.headers.get('content-length')).toBe(String(SEGMENT.length));
     expect(Buffer.from(await segment.arrayBuffer())).toEqual(SEGMENT);
 

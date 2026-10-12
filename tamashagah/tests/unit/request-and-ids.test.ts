@@ -120,3 +120,16 @@ describe('storage keys', () => {
     expect(isPublicMediaKey('images/avatars/u1/abc.svg')).toBeNull();
   });
 });
+
+describe('safeRedirectPath hardening', () => {
+  it('rejects control characters that URL parsers strip (open-redirect via TAB/LF/CR)', () => {
+    for (const evil of ['/\t/evil.example', '/\n/evil.example', '/\r/evil.example', '/%09/x\u0000', '/a\u007fb']) {
+      expect(safeRedirectPath(evil, '/home')).toBe('/home');
+    }
+  });
+  it('keeps normal in-site paths and normalises them', () => {
+    expect(safeRedirectPath('/studio/videos?tab=all#x', '/')).toBe('/studio/videos?tab=all#x');
+    expect(safeRedirectPath('//evil.example', '/')).toBe('/');
+    expect(safeRedirectPath('https://evil.example', '/')).toBe('/');
+  });
+});

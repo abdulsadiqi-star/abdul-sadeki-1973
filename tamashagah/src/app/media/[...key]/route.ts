@@ -41,7 +41,9 @@ function cacheControlFor(key: string, mode: Mode): string {
   if (key.endsWith('.m3u8')) return 'public, max-age=30, stale-while-revalidate=60';
   // Subtitles can be replaced under the same key: keep them fresh (ETag revalidation handles the rest).
   if (key.endsWith('.vtt')) return 'public, max-age=60';
-  if (mode === 'public-asset' || /\/(seg_|init|poster_)/.test(key)) return 'public, max-age=31536000, immutable';
+  // Only keys that carry a random token (avatars, banners, posters) are immutable; video segments must be able to go away on takedown.
+  if (mode === 'public-asset' || /\/poster_/.test(key)) return 'public, max-age=31536000, immutable';
+  if (/\/(seg_|init)/.test(key)) return 'public, max-age=3600';
   return 'public, max-age=3600';
 }
 

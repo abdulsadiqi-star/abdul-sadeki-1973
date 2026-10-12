@@ -62,9 +62,12 @@ export function isListedPublicly(video: VideoAccessInfo): boolean {
   );
 }
 
-/** Channel owner or moderator may moderate comments on a channel's videos. */
+/**
+ * Only the channel owner moderates comments through the studio. Platform moderators act through the staff panel
+ * (`features/moderation`), which applies the policy matrix (never on admins/self) and writes the audit row.
+ */
 export const canModerateComments = (actor: Actor, video: Pick<VideoAccessInfo, 'channelId'>): boolean =>
-  ownsChannel(actor, video.channelId) || isModerator(actor);
+  ownsChannel(actor, video.channelId);
 
 export const canAccessStudio = (actor: Actor): boolean => !!actor && !!actor.channelId;
 export const canAccessAdmin = (actor: Actor): boolean => isModerator(actor);
