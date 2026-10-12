@@ -22,6 +22,8 @@ No `ComingSoon` placeholder remains in `src/app`.
 * Production build; full Playwright suite (desktop + mobile incl. axe): 199 passed, 1 skipped (touch-only) — the 4 failures of the last full run were two flows that needed the verified-e-mail rule added by the security review; fixed and re-run green.
 * Docker: images built, full Compose stack run; register → SMTP mail → verify → channel → tus upload → worker → HLS in S3 → FFmpeg decode OK (`docs/deployment.md` §13).
 
+* GitHub Actions (`tamashagah-ci`) on the final commit: all five jobs green — quality, integration, e2e (desktop + mobile), S3 storage self-test, Docker Compose smoke (real image build, deep health, storage check inside the worker).
+
 ## Not verified / external
 
 See [`known-limitations.md`](known-limitations.md).
