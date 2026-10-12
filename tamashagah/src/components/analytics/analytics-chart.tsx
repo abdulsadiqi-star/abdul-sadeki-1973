@@ -249,7 +249,16 @@ export function AnalyticsChart({
         </div>
 
         {/* Text alternative: always in the DOM, visually hidden until requested. */}
-        <div id={tableId} className={cn(showTable ? 'max-h-96 overflow-auto rounded-lg border' : 'sr-only')}>
+        <div
+          id={tableId}
+          // The wrapper is the only scroll container (the Table primitive's own overflow wrapper must not become a second,
+          // unfocusable one); when it scrolls it is a labelled, keyboard-focusable region.
+          className={cn(
+            '[&_[data-slot=table-container]]:overflow-visible',
+            showTable ? 'max-h-96 overflow-auto rounded-lg border outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50' : 'sr-only',
+          )}
+          {...(showTable ? { tabIndex: 0, role: 'region', 'aria-label': 'جدول داده‌های نمودار؛ با کلیدهای جهت‌نما پیمایش کنید' } : {})}
+        >
           <Table>
             <caption className="sr-only">
               جدول داده‌های نمودار — {period}

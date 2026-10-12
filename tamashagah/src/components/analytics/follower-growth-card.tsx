@@ -36,12 +36,14 @@ export async function FollowerGrowthCard({
         <dl className="grid grid-cols-3 gap-3 text-center">
           <div className="rounded-xl bg-muted/60 px-2 py-4">
             <dt className="text-xs text-muted-foreground">{metricLabels.newFollowers}</dt>
-            <dd className="mt-1 text-2xl font-extrabold tabular-nums" data-testid="growth-new">
-              {f.number(totals.newFollowers)}
+            <dd className="mt-1">
+              <span className="block text-2xl font-extrabold tabular-nums" data-testid="growth-new">
+                {f.number(totals.newFollowers)}
+              </span>
+              <span className="mt-1.5 flex justify-center">
+                <ChangeBadge value={changes.newFollowers} />
+              </span>
             </dd>
-            <div className="mt-1.5 flex justify-center">
-              <ChangeBadge value={changes.newFollowers} />
-            </div>
           </div>
           <div className="rounded-xl bg-muted/60 px-2 py-4">
             <dt className="text-xs text-muted-foreground">{metricLabels.unfollows}</dt>
@@ -51,12 +53,17 @@ export async function FollowerGrowthCard({
           </div>
           <div className="rounded-xl bg-accent px-2 py-4 text-accent-foreground">
             <dt className="text-xs">{metricLabels.netFollowers}</dt>
-            <dd className="mt-1 text-2xl font-extrabold tabular-nums" data-testid="growth-net">
-              <bdi dir="ltr">{net > 0 ? '+' : net < 0 ? '−' : ''}{f.number(Math.abs(net))}</bdi>
+            <dd className="mt-1">
+              <span className="block text-2xl font-extrabold tabular-nums" data-testid="growth-net">
+                <bdi dir="ltr">
+                  {net > 0 ? '+' : net < 0 ? '\u2212' : ''}
+                  {f.number(Math.abs(net))}
+                </bdi>
+              </span>
+              <span className="mt-1.5 flex justify-center">
+                <ChangeBadge value={changes.netFollowers} />
+              </span>
             </dd>
-            <div className="mt-1.5 flex justify-center">
-              <ChangeBadge value={changes.netFollowers} />
-            </div>
           </div>
         </dl>
       </CardContent>

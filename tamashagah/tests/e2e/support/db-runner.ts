@@ -41,10 +41,12 @@ type SeedCommand = {
 
 type Command =
   | SeedCommand
+  | { command: 'plainUser'; email: string; password: string }
   | { command: 'decide'; channelId: string; status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED'; note: string | null }
   | { command: 'application'; channelId: string }
   | { command: 'comment'; id: string }
   | { command: 'user'; id: string }
+  | { command: 'channel'; id: string }
   | { command: 'cleanup'; userIds: string[] };
 
 async function seed(spec: SeedCommand) {
@@ -122,6 +124,14 @@ async function run(input: Command): Promise<unknown> {
     case 'seed':
       return seed(input);
 
+    case 'plainUser': {
+      // A verified account without a channel (the settings page then offers the account tab only).
+      const user = await db.user.create({
+        data: { email: input.email, displayName: 'کاربر بدون کانال', role: 'USER', passwordHash: await hashPassword(input.password), emailVerifiedAt: new Date() },
+      });
+      return { userId: user.id };
+    }
+
     case 'decide': {
       // What the admin panel does: a conditional update, so a decision can never overwrite a withdrawal.
       const reviewer = await db.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
@@ -143,7 +153,10 @@ async function run(input: Command): Promise<unknown> {
       return db.comment.findUnique({ where: { id: input.id }, select: { id: true, status: true } });
 
     case 'user':
-      return db.user.findUnique({ where: { id: input.id }, select: { id: true, avatarKey: true, displayName: true } });
+      return db.user.findUnique({ where: { id: input.id }, select: { id: true, avatarKey: true, displayName: true, digitStyle: true } });
+
+    case 'channel':
+      return db.channel.findUnique({ where: { id: input.id }, select: { name: true, description: true, links: true, searchName: true, avatarKey: true, bannerKey: true } });
 
     case 'cleanup': {
       // Channels, videos, events, sessions, comments, follows and applications all cascade from the user. Besides the

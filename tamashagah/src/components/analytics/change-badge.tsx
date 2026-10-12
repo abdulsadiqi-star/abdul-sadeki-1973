@@ -30,9 +30,11 @@ export async function ChangeBadge({ value, className }: { value: number | null; 
     );
   }
   const up = rounded > 0;
+  // The text stays in the foreground colour (tinted backgrounds with coloured text miss WCAG AA in one of the themes);
+  // direction is carried by the arrow icon, its colour, the sign-less number and the screen-reader sentence.
   return (
-    <Badge variant={up ? 'success' : 'outline'} className={cn(!up && 'border-transparent bg-destructive/10 text-destructive', className)}>
-      {up ? <ArrowUpRight aria-hidden="true" /> : <ArrowDownRight aria-hidden="true" />}
+    <Badge variant="outline" className={cn(up ? 'border-success/40 bg-success/10' : 'border-destructive/40 bg-destructive/10', className)}>
+      {up ? <ArrowUpRight aria-hidden="true" className="text-success" /> : <ArrowDownRight aria-hidden="true" className="text-destructive" />}
       <span aria-hidden="true">{text}</span>
       <span className="sr-only">{up ? `${text} افزایش نسبت به بازه‌ی قبل` : `${text} کاهش نسبت به بازه‌ی قبل`}</span>
     </Badge>

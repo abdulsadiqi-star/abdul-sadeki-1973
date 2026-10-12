@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { BarChart3, Eye, Heart, Pencil, Upload, Video as VideoIcon } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/studio/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronEnd } from '@/components/icons';
@@ -65,7 +65,7 @@ export async function RecentVideosCard({ videos }: { videos: DashboardVideo[] })
                           <span className="tabular-nums">{f.number(video.likes)}</span>
                           <span className="sr-only">پسند</span>
                         </span>
-                        <Badge variant={status.variant}>{status.label}</Badge>
+                        <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
