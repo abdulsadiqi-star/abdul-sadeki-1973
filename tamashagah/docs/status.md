@@ -18,8 +18,8 @@ No `ComingSoon` placeholder remains in `src/app`.
 ## Verification (merged tree)
 
 * `pnpm typecheck`, `pnpm lint`, `pnpm audit:security`, `pnpm audit --prod`: clean.
-* `pnpm test:unit` 592, `pnpm test:components` 21, `pnpm test:integration` 782 passed (16 skipped: S3 emulator absent).
-* Production build; full Playwright suite (desktop + mobile incl. axe) — see `docs/testing.md`.
+* `pnpm test:unit` 594, `pnpm test:components` 21, `pnpm test:integration` 784 passed (16 skipped: S3 emulator absent).
+* Production build; full Playwright suite (desktop + mobile incl. axe): 199 passed, 1 skipped (touch-only) — the 4 failures of the last full run were two flows that needed the verified-e-mail rule added by the security review; fixed and re-run green.
 * Docker: images built, full Compose stack run; register → SMTP mail → verify → channel → tus upload → worker → HLS in S3 → FFmpeg decode OK (`docs/deployment.md` §13).
 
 ## Not verified / external
