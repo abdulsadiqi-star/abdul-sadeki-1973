@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { randomEmail, registerViaUi } from './helpers';
+import { randomEmail, registerViaUi, verifyEmailViaMail } from './helpers';
 
 /**
  * Discovery e2e (desktop + mobile projects): search combobox, search → channel → follow, shorts feed, playlists, the help
@@ -156,7 +156,9 @@ test.describe('information pages', () => {
     await page.goto('/help/tickets');
     await expect(page).toHaveURL(/\/login\?next=/);
 
-    await registerViaUi(page, randomEmail('ticket'));
+    const ticketEmail = randomEmail('ticket');
+    await registerViaUi(page, ticketEmail);
+    await verifyEmailViaMail(page, ticketEmail); // tickets need a verified e-mail
     await page.goto('/help/tickets');
     await page.getByRole('button', { name: 'ثبت تیکت' }).click(); // validation first
     await expect(page.getByText('دسته‌بندی را انتخاب کنید.')).toBeVisible();
@@ -195,7 +197,9 @@ test.describe('information pages', () => {
 
     await page.goto('/copyright');
     await expect(page.getByRole('link', { name: 'ورود به حساب' })).toBeVisible(); // visitors must sign in first
-    await registerViaUi(page, randomEmail('copyright'), undefined, 'مریم رضایی');
+    const claimantEmail = randomEmail('copyright');
+    await registerViaUi(page, claimantEmail, undefined, 'مریم رضایی');
+    await verifyEmailViaMail(page, claimantEmail); // copyright notices need a verified e-mail
     await page.goto(`/copyright?video=${videoId}`);
     await expect(page.getByLabel('نشانی ویدیوی مورد شکایت')).toHaveValue(videoId);
 
