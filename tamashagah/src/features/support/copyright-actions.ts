@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { Errors, runAction, type ActionResult } from '@/lib/errors';
-import { requireUser } from '@/lib/auth/guards';
+import { requireVerifiedUser } from '@/lib/auth/guards';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { parse } from '@/lib/validation';
 import { discoveryLimits } from '@/features/discovery/limits';
@@ -21,7 +21,7 @@ import { formatCopyrightNotice, parseVideoReference } from './rules';
  */
 export async function createCopyrightNoticeAction(input: unknown): Promise<ActionResult<{ ticketId: string; number: number }>> {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser(); // sybil accounts must not be able to flood support
     const data = parse(copyrightNoticeSchema, input);
     await enforceRateLimit('copyright:user', user.id, discoveryLimits.copyrightNotice);
 

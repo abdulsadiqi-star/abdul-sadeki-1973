@@ -115,7 +115,14 @@ export async function setFollow(
     return false;
   });
 
-  if (follow && changed) {
+  // Follow/unfollow cycling must not spam the creator: one NEW_FOLLOWER notification per follower per channel per day.
+  const alreadyNotified =
+    follow && changed
+      ? (await db.notification.count({
+          where: { userId: channel.ownerId, type: 'NEW_FOLLOWER', actorId: viewer.id, channelId, createdAt: { gt: new Date(Date.now() - 86_400_000) } },
+        })) > 0
+      : false;
+  if (follow && changed && !alreadyNotified) {
     await notify({
       userId: channel.ownerId,
       type: 'NEW_FOLLOWER',

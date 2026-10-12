@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { Errors, runAction, type ActionResult } from '@/lib/errors';
-import { requireUser } from '@/lib/auth/guards';
+import { requireVerifiedUser } from '@/lib/auth/guards';
 import { enforceRateLimit, limits } from '@/lib/rate-limit';
 import { parse } from '@/lib/validation';
 import { discoveryLimits } from '@/features/discovery/limits';
@@ -18,7 +18,7 @@ import { MAX_MESSAGES_PER_TICKET, MAX_OPEN_TICKETS, createTicketSchema, replyTic
 
 export async function createTicketAction(input: unknown): Promise<ActionResult<{ id: string; number: number }>> {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser(); // sybil accounts must not be able to flood support
     const data = parse(createTicketSchema, input);
     await enforceRateLimit('ticket:user', user.id, limits.ticket);
     const open = await db.supportTicket.count({ where: { userId: user.id, status: 'OPEN' } });
@@ -43,7 +43,7 @@ export async function createTicketAction(input: unknown): Promise<ActionResult<{
 
 export async function replyTicketAction(input: unknown): Promise<ActionResult> {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireVerifiedUser(); // sybil accounts must not be able to flood support
     const { ticketId, body } = parse(replyTicketSchema, input);
     const ticket = await db.supportTicket.findUnique({
       where: { id: ticketId },
