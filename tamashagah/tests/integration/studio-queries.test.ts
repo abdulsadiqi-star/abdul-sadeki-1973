@@ -181,7 +181,11 @@ describe('upload page data', () => {
     const working = await mk('پردازش', 'PROCESSING');
     await mk('آماده', 'READY');
 
-    expect(await getPendingUploads(channelId)).toEqual([{ id: fresh.id, filename: 'تازه.mp4', sizeBytes: 5_000_000, createdAt: fresh.createdAt.toISOString() }]);
+    const pending = await getPendingUploads(channelId);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({ id: fresh.id, filename: 'تازه.mp4', sizeBytes: 5_000_000, createdAt: fresh.createdAt.toISOString() });
+    // the saved form values travel with it, so a resumed upload continues with the same form
+    expect(pending[0]!.metadata).toMatchObject({ title: 'تازه', visibility: 'PUBLIC', publishMode: 'PUBLISH', kindChoice: 'auto' });
     expect((await getProcessingVideos(channelId)).map((v) => v.id).sort()).toEqual([queued.id, working.id].sort());
     expect(await getPendingUploads('someone-else')).toEqual([]);
   });
