@@ -192,10 +192,10 @@ async function signIn(page: Page, who: Creator) {
   await loginViaUi(page, who.email, who.password);
 }
 
-/** The big number of a `StatCard` (first token of the cell's text; the badge and label follow it). */
+/** The big number of a `StatCard`. */
 async function statValue(page: Page, id: string): Promise<string> {
-  const text = await page.getByTestId(`stat-${id}`).innerText();
-  return text.trim().split(/\s+/)[0]!;
+  // the first <span> of a StatCard is the number; the change badge and the label come after it
+  return (await page.getByTestId(`stat-${id}`).locator('span').first().innerText()).trim();
 }
 
 async function expectNoHorizontalScroll(page: Page) {
@@ -381,15 +381,15 @@ test.describe('analytics /studio/analytics', () => {
     // breakdowns are text first (number and share), bars are decoration
     const devices = page.locator('[data-slot="card"]').filter({ hasText: 'بازدیدها بر اساس نوع دستگاه بیننده' });
     const mobile = views.filter((v) => v.device === 'MOBILE' && tehranKey(v.at) >= keyBack(29));
-    await expect(devices).toContainText(`رایانه ${fa(current.length - mobile.length)}`);
-    await expect(devices).toContainText(`موبایل ${fa(mobile.length)}`);
+    await expect(devices).toContainText(new RegExp(`رایانه\\s*${fa(current.length - mobile.length)} بازدید`));
+    await expect(devices).toContainText(new RegExp(`موبایل\\s*${fa(mobile.length)} بازدید`));
 
     // per-video table for the same range
     const row = (title: string) => page.getByTestId('video-row').filter({ hasText: title });
     for (const key of ['v1', 'v2', 'v3'] as const) {
       await expect(row(TITLES[key]).getByRole('cell').nth(1)).toHaveText(fa(between(views, keyBack(29), keyBack(0), key).length));
     }
-    await expect(row(TITLES.v1).getByRole('link', { name: TITLES.v1 })).toHaveAttribute('href', new RegExp(`video=${main.videoIds.v1}`));
+    await expect(row(TITLES.v1).getByRole('link', { name: TITLES.v1, exact: true })).toHaveAttribute('href', new RegExp(`video=${main.videoIds.v1}`));
     await expectNoHorizontalScroll(page);
   });
 
@@ -576,8 +576,11 @@ test.describe('settings /studio/settings', () => {
     await expect(menuImage).toHaveCount(0); // initials until there is an image
 
     // not an image: the browser-side check
-    await input.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
-    await expect(page.getByRole('alert').filter({ hasText: 'فقط تصویر JPG، PNG یا WebP پذیرفته می‌شود.' })).toBeVisible();
+    // (retried: a file chosen before React has hydrated the input is silently lost, and choosing a bad file twice is harmless)
+    await expect(async () => {
+      await input.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+      await expect(page.getByRole('alert').filter({ hasText: 'فقط تصویر JPG، PNG یا WebP پذیرفته می‌شود.' })).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
     // claims to be a PNG but is a script: only the server-side magic-byte check can catch this one
     await input.setInputFiles({ name: 'evil.png', mimeType: 'image/png', buffer: Buffer.from('<?php system($_GET["c"]); ?> pretending to be a picture') });
     await expect(page.getByRole('alert').filter({ hasText: 'فقط تصویر' })).toBeVisible();
