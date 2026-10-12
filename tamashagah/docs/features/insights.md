@@ -55,6 +55,26 @@ file is deleted. Limits are defined in each feature's `limits.ts`.
 - Unit: `tests/unit/{analytics-*,user-agent,settings-schemas,monetization}.test.ts`. Integration (real database): `tests/integration/{analytics-queries,analytics-export,studio-dashboard,settings,monetization}.test.ts`.
   E2E: `tests/e2e/insights.spec.ts`. Fixtures: `tests/helpers/insights-fixtures.ts` (independent oracle for Tehran days).
 
+## Performance (measured once, 199,990 SEED view events + 2,535 follow events on one channel)
+
+PostgreSQL 16 on the shared 4-CPU sandbox, in-process calls, 5 runs, median (`scripts/seed-demo-analytics.ts --total=200000`):
+
+| Call | Median |
+|---|---|
+| overview 7 d / 30 d / 90 d | 60 / 260 / 461 ms |
+| overview 365 d, daily / monthly | 780 / 647 ms |
+| overview of one video, 30 d | 43 ms |
+| per-video table (30 d, sorted, page 1) | 45 ms |
+| dashboard data / monetization stats / 12-month history | 97 / 49 / 95 ms |
+
+SQL and index choices: one aggregation per table over `[previous.from, to)` (current and previous period split in JS), so a page is a handful of
+statements, never per-row or per-video queries. Existing indexes are used as they are (`ViewEvent` `(channelId, createdAt)`, `(videoId, createdAt)`,
+`FollowEvent` `(channelId, createdAt)`, `VideoLike` `(videoId, createdAt)`); no migration. In this benchmark every event belongs to one channel, so the planner
+chose the plain `createdAt` index with a channel filter (not selective here; with many channels the composite index is the expected match, not measured).
+The dominant statement is the daily series with `count(DISTINCT "viewerKey")` (~250-340 ms for 180 days, ~114k rows; the DISTINCT sort spills 5 MB at the default
+`work_mem`). Alternatives measured with EXPLAIN ANALYZE (additive aggregates without DISTINCT 140 ms + hash-based daily distincts 132 ms; `bool_or` period
+distincts 126 ms) are not faster than the single statement, so it was kept. The time-zone conversion costs about 50 ms of the 140 ms scan.
+
 ## Known limits
 
 `User.notifyByEmail` is stored but nothing sends notification e-mails yet. Renaming a channel does not re-index its videos' `searchBody`. Followers gained cannot be attributed
