@@ -1,40 +1,27 @@
 # Implementation status
 
-Legend: ✅ done & verified · 🟡 in progress · ⬜ not started · 🧩 placeholder (`ComingSoon`) — must be replaced.
-
-## Foundation (Phase 1 + auth part of Phase 3)
-
-| Area | State | Verified by |
-| --- | --- | --- |
-| Prisma schema (all domain models, FTS generated column, trigram indexes) + migration | ✅ | `migrate diff` = no drift, integration tests |
-| Env validation, db/redis/logger/errors/rate-limit/origin/api wrapper | ✅ | unit + integration tests |
-| Persian text normalization, Jalali calendar, numeral/date/size formatters | ✅ | 79 unit tests |
-| Storage drivers (fs, S3), media delivery route (Range/ETag/visibility) | ✅ (S3 path verified in the media phase) | unit tests for keys/range; route smoke |
-| Design tokens (light/dark), Vazirmatn, 30 RTL-hardened UI primitives | ✅ | screenshots, e2e |
-| App shell: header, collapsible right sidebar, mobile nav, studio shell, notifications bell, user menu | ✅ | screenshots desktop/mobile, e2e |
-| Auth: register/login/logout, e-mail verification, reset, change password, sessions, roles, channel creation | ✅ | 37 integration tests + 16 e2e (desktop+mobile) |
-| Proxy gate for /studio and /admin (deep-link `next=`) | ✅ | e2e |
-| Core engagement (like/follow/watch-later services, actions, buttons) | ✅ | 15 integration tests |
-| Image sanitizing (`lib/images`), Jalali date/time picker, ConfirmDialog | ✅ | unit + component tests |
-| Recommendations: public-only related/trending (foundation version) | ✅ | integration test |
+Last full verification: see "Verification" below. Everything listed is implemented and covered by tests unless marked otherwise.
 
 ## Routes
 
-| Route | State | Owner |
+| Area | Routes | Notes |
 | --- | --- | --- |
-| `/` | 🟡 foundation version (latest + most viewed) | discovery |
-| `/login` `/register` `/forgot-password` `/reset-password` `/verify-email` | ✅ | foundation |
-| `/studio` (onboarding: create channel) | ✅ onboarding · 🧩 dashboard | insights |
-| `/search`, `/category/[slug]`, `/channel/[handle]`, `/shorts`, `/library`, `/library/[tab]` | 🧩 | discovery |
-| `/watch/[id]` | 🧩 | watch |
-| `/studio/upload`, `/studio/videos`, `/studio/videos/[id]/edit` | 🧩 | media |
-| `/studio/comments`, `/studio/notifications` | 🧩 | watch (engagement) |
-| `/studio/analytics`, `/studio/settings`, `/studio/monetization`, `/admin` | 🧩 | insights |
-| `/about` `/help` `/help/tickets` `/apps` `/verification` `/copyright` `/terms` `/privacy` | 🧩 | discovery (info) |
-| `/media/[...key]` | ✅ | foundation (media refines) |
-| `/api/notifications`, `/api/notifications/read` | ✅ | foundation |
-| upload (tus), worker, HLS | ⬜ | media |
+| Public | `/` `/search` `/category/[slug]` `/channel/[handle]` `/shorts` `/watch/[id]` `/library[/tab]` `/playlist/[id]` | HLS player (hls.js), Persian FTS, rule-based recommendations |
+| Auth | `/login` `/register` `/forgot-password` `/reset-password` `/verify-email` | argon2id, opaque sessions, verified e-mail gates |
+| Studio | `/studio` `/studio/upload` `/studio/videos` `/studio/videos/[id]/edit` `/studio/comments` `/studio/analytics` `/studio/notifications` `/studio/settings` `/studio/monetization` | tus uploads, FFmpeg worker, analytics from stored events |
+| Admin | `/admin` + reports, videos, channels, users, monetization, verification, support, activity | server-enforced matrix, transactional audit |
+| Info | `/about` `/help` `/help/tickets` `/apps` `/verification` `/copyright` `/terms` `/privacy` | real forms; legal pages are templates |
+| SEO/PWA | `/robots.txt` `/sitemap.xml` `/manifest.webmanifest` service worker | |
 
-## Known gaps to close before release
+No `ComingSoon` placeholder remains in `src/app`.
 
-See `known-limitations.md` (created in the final phase). Every `ComingSoon` usage must be gone.
+## Verification (merged tree)
+
+* `pnpm typecheck`, `pnpm lint`, `pnpm audit:security`, `pnpm audit --prod`: clean.
+* `pnpm test:unit` 592, `pnpm test:components` 21, `pnpm test:integration` 782 passed (16 skipped: S3 emulator absent).
+* Production build; full Playwright suite (desktop + mobile incl. axe) — see `docs/testing.md`.
+* Docker: images built, full Compose stack run; register → SMTP mail → verify → channel → tus upload → worker → HLS in S3 → FFmpeg decode OK (`docs/deployment.md` §13).
+
+## Not verified / external
+
+See [`known-limitations.md`](known-limitations.md).

@@ -29,6 +29,7 @@
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "db:studio": "prisma studio",
     "seed:media": "tsx --env-file-if-exists=.env scripts/seed-media.ts",
+    "seed:demo": "pnpm db:seed && tsx --env-file-if-exists=.env scripts/seed-discovery.ts && tsx --env-file-if-exists=.env scripts/seed-media.ts && for c in sara-cooks arman-tech nika-travel; do tsx --conditions=react-server --env-file-if-exists=.env scripts/seed-demo-analytics.ts --channel=$c --days=90 --clear || exit 1; done",
     "seed:bulk": "tsx --env-file-if-exists=.env scripts/bulk-seed.ts",
     "postinstall": "prisma generate",
     "setup:env": "node scripts/init-env.mjs",
