@@ -125,6 +125,9 @@ test.describe('discovery: library and playlists', () => {
     await page.getByRole('button', { name: /حذف/ }).first().click();
     await page.getByRole('alertdialog').getByRole('button', { name: /حذف/ }).click();
     await expect(page).toHaveURL(/\/library/);
+    // measure the settled page: not the loading skeleton and not the toast that is still sliding in
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByText('لیست پخش حذف شد.')).toBeHidden({ timeout: 15_000 });
     await expectNoHorizontalOverflow(page);
   });
 });
