@@ -207,7 +207,7 @@ describe('thumbnail, probe and duration arguments', () => {
   });
 
   it('ffprobe prints JSON for the format and every stream', () => {
-    expect(buildProbeArgs('/x/y')).toEqual(['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', '/x/y']);
+    expect(buildProbeArgs('/x/y')).toEqual(['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', '-protocol_whitelist', 'file', '/x/y']);
   });
 
   it('measures duration by stream copy to the null muxer', () => {

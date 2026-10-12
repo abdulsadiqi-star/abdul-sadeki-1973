@@ -82,10 +82,10 @@ describe('management and moderation', () => {
     expect(canManageVideo(null, base)).toBe(false);
     expect(canManageVideo(moderator, base)).toBe(true);
   });
-  it('lets only the owner channel and moderators moderate comments', () => {
+  it('lets only the owner channel moderate comments in the studio (moderators use the staff panel)', () => {
     expect(canModerateComments(owner, base)).toBe(true);
     expect(canModerateComments(otherCreator, base)).toBe(false);
-    expect(canModerateComments(moderator, base)).toBe(true);
+    expect(canModerateComments(moderator, base)).toBe(false);
   });
   it('requires a channel for the studio and a staff role for admin', () => {
     expect(canAccessStudio(owner)).toBe(true);
