@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Eye, Film, MessageSquare, RotateCcw, ThumbsUp } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Eye, Film, MessageSquare, ThumbsUp } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useFormatter } from '@/components/providers/format-provider';
 import { labels } from '@/lib/i18n/fa';
@@ -61,7 +60,7 @@ export function PosterThumb({ video, className }: { video: StudioVideoItem; clas
         </span>
       )}
       {video.durationSeconds != null && !isProcessing(video) && (
-        <span className="absolute end-2 top-2 rounded-md bg-black/75 px-1.5 py-0.5 text-xs font-medium text-white tabular-nums">{f.duration(video.durationSeconds)}</span>
+        <span className="absolute end-1.5 bottom-1.5 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-white tabular-nums">{f.duration(video.durationSeconds)}</span>
       )}
       {isProcessing(video) && <PosterOverlay video={video} />}
     </div>
@@ -91,49 +90,42 @@ export function VideoGridCard({ video, selected, onSelectedChange, onDelete, onR
   const editHref = `/studio/videos/${video.id}/edit` as const;
 
   return (
-    <li>
+    <li className="min-w-0">
       <article
         data-testid="video-card"
         data-video-id={video.id}
         data-status={video.processingStatus}
-        className={cn('group/video flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow hover:shadow-md', selected && 'ring-2 ring-primary')}
+        className={cn('flex h-full flex-col overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow hover:shadow-md', selected && 'ring-2 ring-primary')}
       >
         <div className="relative">
           <Link href={editHref} aria-label={`ویرایش «${video.title}»`} tabIndex={-1} className="block outline-none focus-visible:ring-[3px] focus-visible:ring-ring">
             <PosterThumb video={video} />
           </Link>
-          <span className="absolute start-2 top-2 rounded-md bg-background/90 p-1 shadow-xs">
+          <span className="absolute start-1.5 top-1.5 rounded-md bg-background/90 p-0.5 shadow-xs">
             <Checkbox checked={selected} onCheckedChange={(value) => onSelectedChange(value === true)} aria-label={`انتخاب «${video.title}»`} />
           </span>
         </div>
 
-        <div className="flex flex-1 flex-col gap-2.5 p-3">
-          <h3 className="line-clamp-2 min-h-12 text-[15px] leading-6 font-semibold">
+        <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+          <h3 className="line-clamp-2 min-h-10 text-[13px] leading-5 font-semibold">
             <Link href={editHref} dir="auto" className="transition-colors hover:text-primary focus-visible:text-primary">
               {video.title}
             </Link>
           </h3>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1">
             <VideoStateBadge video={video} />
             {video.processingStatus === 'READY' && <VisibilityBadge visibility={video.visibility} />}
             <KindBadge kind={video.kind} />
           </div>
-          {video.processingStatus === 'FAILED' && (
-            <div className="space-y-1.5">
-              <p className="line-clamp-2 text-xs text-destructive">{video.failureReason ?? 'پردازش ویدیو ناموفق بود.'}</p>
-              <Button size="xs" variant="outline" onClick={onRetry}>
-                <RotateCcw /> تلاش دوباره
-              </Button>
-            </div>
-          )}
-          <div className="mt-auto space-y-2">
+          {video.processingStatus === 'FAILED' && <p className="line-clamp-2 text-xs text-destructive">{video.failureReason ?? 'پردازش ویدیو ناموفق بود.'}</p>}
+          <div className="mt-auto space-y-1 pt-1">
             <VideoStats video={video} />
-            <p className="text-xs text-muted-foreground">{dateLine}</p>
+            <p className="text-[11px] text-muted-foreground">{dateLine}</p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t p-2">
-          <VideoItemActions video={video} onDelete={onDelete} onRetry={onRetry} />
+        <div className="border-t px-1.5 py-1">
+          <VideoItemActions variant="icons" video={video} onDelete={onDelete} onRetry={onRetry} />
         </div>
       </article>
     </li>

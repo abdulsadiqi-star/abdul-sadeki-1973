@@ -27,7 +27,7 @@ import type { ActionFailure } from '@/lib/errors';
 import { applyServerErrors } from '@/lib/form-utils';
 import { labels } from '@/lib/i18n/fa';
 import { cn } from '@/lib/utils';
-import type { ProcessingStatus, PublishStatus, Visibility } from '@/generated/prisma/enums';
+import type { ProcessingStatus, PublishStatus } from '@/generated/prisma/enums';
 import { VideoTagInput } from './video-tag-input';
 
 export type { MetadataFormValues };
@@ -35,6 +35,10 @@ export type { MetadataFormValues };
 export type CategoryOption = { id: string; nameFa: string };
 
 const NO_CATEGORY = '__none__';
+
+/** A schedule needs a few minutes of lead time (the scheduler runs every minute). Evaluated on submit, not on render. */
+const tooSoon = (iso: string): boolean => new Date(iso).getTime() < Date.now() + 60_000;
+const scheduleBounds = () => ({ min: new Date(), max: new Date(Date.now() + 365 * 24 * 3_600_000) });
 
 /**
  * Validate with the SAME schema the server uses, but hand the raw values on (the schema's transforms are for the
@@ -88,7 +92,7 @@ function OptionCard({ htmlFor, children, className }: { htmlFor: string; childre
 // Field groups
 // ---------------------------------------------------------------------------
 
-function BasicFields({ form, ids }: { form: UseFormReturn<MetadataFormValues>; ids: string }) {
+function BasicFields({ form }: { form: UseFormReturn<MetadataFormValues> }) {
   return (
     <>
       <FormField
@@ -116,7 +120,7 @@ function BasicFields({ form, ids }: { form: UseFormReturn<MetadataFormValues>; i
           <FormItem>
             <FormLabel>توضیحات</FormLabel>
             <FormControl>
-              <Textarea {...field} id={`${ids}-description`} dir="auto" rows={5} placeholder="درباره‌ی ویدیو بنویسید…" />
+              <Textarea {...field} dir="auto" rows={5} placeholder="درباره‌ی ویدیو بنویسید…" />
             </FormControl>
             <div className="flex gap-2">
               <FormMessage />
@@ -216,6 +220,7 @@ function PublishingFields({
   // A live video is either published or taken back to a draft; scheduling it again makes no sense.
   const modes = publishModes.filter((mode) => mode.value !== 'SCHEDULE' || context.publishStatus !== 'PUBLISHED');
   const mode = useWatch({ control: form.control, name: 'publishMode' });
+  const [bounds] = useState(scheduleBounds);
 
   return (
     <>
@@ -291,8 +296,8 @@ function PublishingFields({
               <JalaliDateTimeInput
                 value={field.value ? new Date(field.value) : null}
                 onChange={(date) => field.onChange(date ? date.toISOString() : null)}
-                min={new Date()}
-                max={new Date(Date.now() + 365 * 24 * 3_600_000)}
+                min={bounds.min}
+                max={bounds.max}
                 aria-label="تاریخ انتشار"
               />
               <FormDescription>
@@ -405,7 +410,7 @@ export function VideoMetadataForm({ videoId, initial, categories, context, layou
     async (values) => {
     if (!videoId) return;
     setFormError(null);
-    if (values.publishMode === 'SCHEDULE' && values.scheduledFor && new Date(values.scheduledFor).getTime() < Date.now() + 60_000) {
+    if (values.publishMode === 'SCHEDULE' && values.scheduledFor && tooSoon(values.scheduledFor)) {
       form.setError('scheduledFor', { type: 'validate', message: studioMessages.scheduleInPast });
       return;
     }
@@ -453,7 +458,7 @@ export function VideoMetadataForm({ videoId, initial, categories, context, layou
               <CardDescription>عنوان و توضیحات اولین چیزی است که بیننده‌ها می‌بینند.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <BasicFields form={form} ids={ids} />
+              <BasicFields form={form} />
               <DiscoveryFields form={form} categories={categories} showLanguage />
             </CardContent>
           </Card>
@@ -502,7 +507,7 @@ export function VideoMetadataForm({ videoId, initial, categories, context, layou
     <Form {...form}>
       <form onSubmit={save} noValidate className={cn('space-y-4', className)} aria-label="اطلاعات ویدیو">
         <FormError message={formError} />
-        <BasicFields form={form} ids={ids} />
+        <BasicFields form={form} />
         <Collapsible open={moreOpen} onOpenChange={setMoreOpen}>
           <CollapsibleTrigger asChild>
             <Button type="button" variant="ghost" size="sm" className="-ms-2" aria-expanded={moreOpen}>

@@ -1,0 +1,216 @@
+/**
+ * Media journey in a real browser: upload → progress → processing → ready → edit → delete, pause / resume,
+ * resuming after a page reload, and "somebody else's video is not yours".
+ *
+ * Needs the full stack (app + worker + Postgres + Redis + ffmpeg, see docs/testing.md). The creators are inserted
+ * straight into the database by `support/media-db.ts` (registration is rate limited to 5 per hour per address) and sign in
+ * through the real login form.
+ */
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { E2E_PASSWORD, loginViaUi } from './helpers';
+
+const READY_TIMEOUT = 150_000;
+
+/** Run a database fixture command (see support/media-db.ts) and return its JSON result. */
+function dbCommand<T>(...args: string[]): T {
+  const out = execFileSync('pnpm', ['exec', 'tsx', '--env-file-if-exists=.env', 'tests/e2e/support/media-db.ts', ...args], { encoding: 'utf8' });
+  return JSON.parse(out.trim().split('\n').at(-1)!) as T;
+}
+
+const fixtureFile = (name: string, seconds?: number) => dbCommand<{ file: string }>('fixture', name, ...(seconds ? [String(seconds)] : [])).file;
+const createCreator = (label: string) => dbCommand<{ email: string; handle: string }>('creator', label, E2E_PASSWORD);
+const cleanup = (...handles: string[]) => dbCommand('cleanup', ...handles);
+
+/** Open the upload page and wait until React has attached its handlers (a file chosen before that is ignored). */
+async function openUploadPage(page: Page) {
+  await page.goto('/studio/upload');
+  await page.waitForLoadState('networkidle');
+}
+
+const cardFor = (page: Page, name: string): Locator => page.getByTestId('upload-card').filter({ hasText: name });
+const videoIdOf = async (card: Locator) => {
+  const href = await card.getByRole('link', { name: 'ویرایش کامل' }).getAttribute('href');
+  return /\/studio\/videos\/([0-9A-Za-z]{11})\/edit/.exec(href ?? '')![1]!;
+};
+const percentOf = async (card: Locator) => Number(await card.getByRole('progressbar').first().getAttribute('aria-valuenow'));
+
+/** Limit the upload bandwidth of the page (bytes per second) so a 20 MB file takes long enough to interact with. */
+async function throttleUpload(page: Page, bytesPerSecond: number) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 20, downloadThroughput: -1, uploadThroughput: bytesPerSecond });
+}
+
+test.describe('media: upload, process, edit, delete', () => {
+  test('a creator uploads a video, watches it get processed, edits it and deletes it', async ({ page }) => {
+    const creator = await createCreator('media');
+    await loginViaUi(page, creator.email);
+    const file = fixtureFile('landscape-720p', 3);
+    const fileName = path.basename(file);
+
+    // --- upload --------------------------------------------------------------------------------------------------
+    await openUploadPage(page);
+    await expect(page.getByRole('heading', { name: 'ویدیوهای خود را اینجا بکشید و رها کنید' })).toBeVisible();
+    await page.getByTestId('upload-input').setInputFiles(file);
+    const card = cardFor(page, fileName);
+    await expect(card).toBeVisible();
+
+    // metadata can be filled in and saved while the file is still being sent / processed
+    const title = `ویدیوی آزمایشی ${Date.now().toString(36)}`;
+    await card.getByLabel('عنوان ویدیو').fill(title);
+    await card.getByLabel('توضیحات').fill('این ویدیو در آزمون مرورگر بارگذاری شد.');
+    const save = card.getByRole('button', { name: 'ذخیره‌ی اطلاعات' });
+    await expect(save).toBeEnabled({ timeout: 20_000 }); // enabled as soon as the server created the upload
+    await save.click();
+    await expect(page.getByText('تغییرات ذخیره شد.').first()).toBeVisible();
+
+    // --- processing → ready --------------------------------------------------------------------------------------
+    await expect(card).toHaveAttribute('data-phase', /^(processing|ready)$/, { timeout: 60_000 });
+    await expect(card).toHaveAttribute('data-phase', 'ready', { timeout: READY_TIMEOUT });
+    await expect(card.getByText('ویدیو آماده است')).toBeVisible();
+    const id = await videoIdOf(card);
+
+    // the HLS output is served from /media with the right types
+    const master = await page.request.get(`/media/videos/${id}/hls/master.m3u8`);
+    expect(master.status()).toBe(200);
+    expect(master.headers()['content-type']).toContain('mpegurl');
+    const masterText = await master.text();
+    expect(masterText).toContain('#EXT-X-STREAM-INF');
+    const variant = masterText.split('\n').find((line) => line.endsWith('.m3u8'))!;
+    const variantRes = await page.request.get(`/media/videos/${id}/hls/${variant}`);
+    expect(variantRes.status()).toBe(200);
+    const segment = (await variantRes.text()).split('\n').find((line) => line.endsWith('.ts'))!;
+    const segmentRes = await page.request.get(`/media/videos/${id}/hls/${variant.replace('index.m3u8', '')}${segment}`);
+    expect(segmentRes.status()).toBe(200);
+    expect(segmentRes.headers()['content-type']).toBe('video/mp2t');
+
+    // --- the video list -----------------------------------------------------------------------------------------
+    await page.goto('/studio/videos');
+    const listed = page.getByTestId('video-card').filter({ hasText: title });
+    await expect(listed).toBeVisible();
+    await expect(listed.getByText('منتشر شده', { exact: true })).toBeVisible();
+
+    // --- edit ---------------------------------------------------------------------------------------------------
+    await listed.getByRole('link', { name: /^ویرایش/ }).first().click();
+    await expect(page.getByRole('heading', { name: 'ویرایش ویدیو' })).toBeVisible();
+    await expect(page.getByLabel('عنوان ویدیو')).toHaveValue(title);
+    await page.getByLabel('عنوان ویدیو').fill(`${title} (ویرایش‌شده)`);
+    await page.getByRole('radio', { name: /فقط با لینک/ }).click();
+    await page.getByRole('button', { name: 'ذخیره‌ی تغییرات' }).click();
+    await expect(page.getByText('تغییرات ذخیره شد.').first()).toBeVisible();
+
+    // a different generated frame as the poster (the middle candidate is the default, so pick the first)
+    await expect(page.getByTestId('thumbnail-option').nth(1)).toHaveAttribute('aria-checked', 'true');
+    await page.getByTestId('thumbnail-option').nth(0).click();
+    await expect(page.getByText('تصویر بندانگشتی تغییر کرد.').first()).toBeVisible();
+    await expect(page.getByTestId('thumbnail-option').nth(0)).toHaveAttribute('aria-checked', 'true');
+
+    // subtitles
+    await page.getByTestId('subtitle-input').setInputFiles({
+      name: 'fa.vtt',
+      mimeType: 'text/vtt',
+      buffer: Buffer.from('WEBVTT\n\n00:00:00.500 --> 00:00:02.000\nسلام\n'),
+    });
+    await page.getByRole('button', { name: 'افزودن زیرنویس' }).click();
+    await expect(page.getByTestId('subtitle-item')).toHaveCount(1);
+
+    // --- delete -------------------------------------------------------------------------------------------------
+    await page.getByRole('button', { name: 'حذف ویدیو' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'حذف برای همیشه' }).click();
+    await expect(page).toHaveURL(/\/studio\/videos$/);
+    await expect(page.getByTestId('video-card').filter({ hasText: title })).toHaveCount(0);
+    expect((await page.request.get(`/media/videos/${id}/hls/master.m3u8`)).status()).toBe(404);
+    cleanup(creator.handle);
+  });
+
+  test('uploads can be paused and resumed, and continue after the page was reloaded', async ({ page }) => {
+    test.setTimeout(240_000);
+    const creator = await createCreator('resume');
+    await loginViaUi(page, creator.email);
+    const file = fixtureFile('large-1080p');
+    const fileName = path.basename(file);
+    page.on('dialog', (dialog) => void dialog.accept()); // "leave this page?" while an upload runs
+
+    await openUploadPage(page);
+    await throttleUpload(page, 1.5 * 1024 * 1024);
+    await page.getByTestId('upload-input').setInputFiles(file);
+    const card = cardFor(page, fileName);
+    await expect(card).toHaveAttribute('data-phase', 'uploading');
+
+    // progress, speed and ETA are shown while sending
+    await expect.poll(() => percentOf(card), { timeout: 60_000 }).toBeGreaterThan(5);
+    await expect(card.getByTestId('upload-percent')).toContainText('٪');
+    await expect(card.getByText(/در ثانیه/)).toBeVisible();
+
+    // pause: nothing more is sent
+    await card.getByRole('button', { name: 'توقف موقت بارگذاری' }).click();
+    await expect(card).toHaveAttribute('data-phase', 'paused');
+    const pausedAt = await percentOf(card);
+    await page.waitForTimeout(2_500);
+    expect(await percentOf(card)).toBe(pausedAt);
+
+    // resume: it continues and moves on
+    await card.getByRole('button', { name: 'ادامه‌ی بارگذاری' }).click();
+    await expect(card).toHaveAttribute('data-phase', 'uploading');
+    await expect.poll(() => percentOf(card), { timeout: 60_000 }).toBeGreaterThan(pausedAt);
+
+    // reload in the middle of the upload: the server kept what it got
+    await expect.poll(() => percentOf(card), { timeout: 60_000 }).toBeGreaterThan(30);
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByTestId('upload-card')).toHaveCount(0);
+    const pending = page.getByTestId('pending-upload');
+    await expect(pending).toHaveCount(1);
+    await expect(pending).toContainText(fileName);
+
+    // picking the same file again continues from the server's offset
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), pending.getByRole('button', { name: /ادامه با انتخاب فایل/ }).click()]);
+    await chooser.setFiles(file);
+    const resumed = cardFor(page, fileName);
+    await expect(resumed).toContainText('ادامه‌ی بارگذاری قبلی');
+    await expect.poll(() => percentOf(resumed), { timeout: 30_000 }).toBeGreaterThan(20);
+    await expect(resumed).toHaveAttribute('data-phase', /^(finishing|processing|ready)$/, { timeout: 150_000 });
+    await expect(resumed).toHaveAttribute('data-phase', 'ready', { timeout: READY_TIMEOUT });
+
+    cleanup(creator.handle);
+  });
+
+  test('another creator can neither see nor touch your video', async ({ browser, page }) => {
+    const owner = await createCreator('owner');
+    const intruder = await createCreator('intruder');
+    const ownerVideo = dbCommand<{ id: string }>('upload-row', owner.handle);
+
+    const other = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+    const otherPage = await other.newPage();
+    await loginViaUi(otherPage, intruder.email);
+
+    // pages
+    // (the page streams behind its loading skeleton, so the "not found" shows as content; it is the very same page
+    // as for an id that does not exist at all)
+    for (const id of [ownerVideo.id, 'DoesNotExist']) {
+      await otherPage.goto(`/studio/videos/${id}/edit`);
+      await expect(otherPage.getByRole('heading', { name: /پیدا نشد/ })).toBeVisible();
+      await expect(otherPage.getByLabel('عنوان ویدیو')).toHaveCount(0);
+    }
+    // the upload endpoint and the status endpoint answer exactly like for an id that does not exist
+    const head = await otherPage.request.fetch(`/api/upload/${ownerVideo.id}`, { method: 'HEAD', headers: { 'Tus-Resumable': '1.0.0' } });
+    expect(head.status()).toBe(404);
+    const status = await otherPage.request.get(`/api/studio/videos/${ownerVideo.id}/status`);
+    expect(status.status()).toBe(404);
+    // the owner's list does not leak into the intruder's studio
+    await otherPage.goto('/studio/videos');
+    await expect(otherPage.getByText('ویدیوی خصوصی من')).toHaveCount(0);
+
+    // anonymous visitors are turned away from the upload endpoint
+    const anonymous = await browser.newContext({ baseURL: test.info().project.use.baseURL });
+    const anon = await anonymous.request.fetch(`/api/upload/${ownerVideo.id}`, { method: 'HEAD', headers: { 'Tus-Resumable': '1.0.0' } });
+    expect(anon.status()).toBe(401);
+
+    await other.close();
+    await anonymous.close();
+    await page.close();
+    cleanup(owner.handle, intruder.handle);
+  });
+});
