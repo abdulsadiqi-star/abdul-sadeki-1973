@@ -63,8 +63,9 @@ export default async function EditVideoPage({ params }: { params: Promise<{ id: 
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
-        <div className="space-y-5">
+      {/* Phones: status first, then the form, then facts and delete. Desktop: the form on the start side, the rest in a column. */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_21rem] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-6">
+        <div className="order-2 space-y-5 lg:order-none lg:col-start-1 lg:row-span-2 lg:row-start-1">
           <VideoMetadataForm
             key={`${video.processingStatus}:${video.publishStatus}`}
             videoId={video.id}
@@ -77,7 +78,7 @@ export default async function EditVideoPage({ params }: { params: Promise<{ id: 
           <VideoSubtitles videoId={video.id} subtitles={video.subtitles} />
         </div>
 
-        <aside className="order-first space-y-5 lg:order-none">
+        <div className="order-1 lg:order-none lg:col-start-2 lg:row-start-1">
           <VideoProcessingPanel
             initial={{
               id: video.id,
@@ -92,7 +93,9 @@ export default async function EditVideoPage({ params }: { params: Promise<{ id: 
               posterUrl: video.posterUrl,
             }}
           />
+        </div>
 
+        <aside className="order-3 space-y-5 lg:order-none lg:col-start-2 lg:row-start-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">آمار ویدیو</CardTitle>
@@ -126,7 +129,13 @@ export default async function EditVideoPage({ params }: { params: Promise<{ id: 
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
                 {video.originalFilename && <Fact label="فایل اصلی"><span dir="auto" title={video.originalFilename}>{video.originalFilename}</span></Fact>}
                 {video.sourceSizeBytes != null && <Fact label="حجم">{f.bytes(video.sourceSizeBytes)}</Fact>}
-                {video.width && video.height && <Fact label="ابعاد">{f.number(video.width, { useGrouping: false })} × {f.number(video.height, { useGrouping: false })}</Fact>}
+                {video.width && video.height && (
+                  <Fact label="ابعاد">
+                    <span dir="ltr">
+                      {f.number(video.width, { useGrouping: false })} × {f.number(video.height, { useGrouping: false })}
+                    </span>
+                  </Fact>
+                )}
                 {video.durationSeconds != null && <Fact label="مدت">{f.duration(video.durationSeconds)}</Fact>}
                 <Fact label="تاریخ بارگذاری">{f.date(video.createdAt)}</Fact>
                 {video.publishedAt && <Fact label="تاریخ انتشار">{f.date(video.publishedAt)}</Fact>}
