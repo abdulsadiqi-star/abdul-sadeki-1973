@@ -22,6 +22,7 @@ import {
 } from '@/features/discovery/category';
 import { CategoryChips } from '@/features/discovery/components/category-chips';
 import { JsonLd } from '@/features/discovery/components/json-ld';
+import { socialMetadata } from '@/features/discovery/seo';
 import { siteConfig } from '@/config/site';
 
 type Props = {
@@ -44,12 +45,9 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const sp = await searchParams;
   const tab = parseCategoryTab(sp.tab);
   const page = parsePage(sp.page);
-  return {
-    title: `ویدیوهای ${category.nameFa}`,
-    description: category.description || `تازه‌ترین، پربازدیدترین و داغ‌ترین ویدیوهای دسته‌ی «${category.nameFa}» در ${siteConfig.name}.`,
-    alternates: { canonical: hrefFor(slug, tab, page) },
-    openGraph: { title: `ویدیوهای ${category.nameFa} | ${siteConfig.name}`, type: 'website' },
-  };
+  const description = category.description || `تازه‌ترین، پربازدیدترین و داغ‌ترین ویدیوهای دسته‌ی «${category.nameFa}» در ${siteConfig.name}.`;
+  const title = `ویدیوهای ${category.nameFa}`;
+  return { title, description, ...socialMetadata({ title, description, path: hrefFor(slug, tab, page) }) };
 }
 
 export default async function CategoryPage({ params, searchParams }: Props) {
