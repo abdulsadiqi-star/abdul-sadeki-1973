@@ -47,6 +47,7 @@
 .t .title-cell b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .t .title-cell small { color: var(--muted); }
 .t .muted { color: var(--muted); }
+.t td.wrap-cell { white-space: normal; font-weight: 600; line-height: 1.7; }
 .t tr.off td { opacity: .55; }
 .actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 .thumb-sm { width: 42px; height: 42px; border-radius: 9px; display: grid; place-items: center; font-size: 22px; background: hsl(var(--h) var(--tile-s) var(--tile-l)); overflow: hidden; flex: none; }

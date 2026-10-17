@@ -153,7 +153,7 @@
           '</tbody></table></div>' : '<div class="empty" style="padding:28px"><p>هنوز سفارشی ثبت نشده است.</p></div>') +
         '</section>' +
         '<section class="panel"><div class="panel-head"><h2>کالاهای رو به اتمام</h2><a href="#products">مدیریت محصولات ←</a></div>' +
-          (s.lowStock.length ? '<div class="table-wrap"><table class="t"><tbody>' + s.lowStock.map((p) => '<tr><td style="width:40px;font-size:22px">' + esc(p.emoji) + '</td><td class="title-cell"><b>' + esc(p.title) + '</b></td><td class="num"><span class="stock-badge low">' + (p.stock ? fa(p.stock) + ' عدد' : 'ناموجود') + '</span></td></tr>').join('') + '</tbody></table></div>'
+          (s.lowStock.length ? '<div class="table-wrap"><table class="t"><tbody>' + s.lowStock.map((p) => '<tr><td style="width:40px;font-size:22px">' + esc(p.emoji) + '</td><td class="wrap-cell">' + esc(p.title) + '</td><td class="num"><span class="stock-badge low">' + (p.stock ? fa(p.stock) + ' عدد' : 'ناموجود') + '</span></td></tr>').join('') + '</tbody></table></div>'
             : '<div class="empty" style="padding:28px"><p>موجودی همه کالاها بیشتر از ۳ عدد است.</p></div>') +
         '</section>' +
       '</div></div>';
@@ -216,7 +216,7 @@
       const cr = chart.getBoundingClientRect(); const hr = hit.getBoundingClientRect();
       const bar = $('.bar[data-i="' + i + '"]', chart);
       const topPx = bar ? bar.getBoundingClientRect().top : hr.bottom;
-      tip.innerHTML = new Date(d.day).toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' }) + '<br><b>' + toman(d.total) + '</b> • ' + fa(d.count) + ' سفارش';
+      tip.innerHTML = new Date(d.day).toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' }) + '<br><b>' + toman(d.total) + '</b>، ' + fa(d.count) + ' سفارش';
       tip.hidden = false;
       const left = Math.min(Math.max(hr.left + hr.width / 2 - cr.left, 70), cr.width - 70);
       tip.style.left = left + 'px'; tip.style.top = (topPx - cr.top) + 'px';
@@ -251,7 +251,7 @@
     const hue = (id) => (CATS.find((c) => c.id === id) || { hue: 20 }).hue;
     $('#ptable').innerHTML = list.length ? '<table class="t"><thead><tr><th></th><th>نام کالا</th><th>دسته</th><th class="num">قیمت</th><th class="num">تخفیف</th><th class="num">موجودی</th><th class="num">فروش</th><th>وضعیت</th><th></th></tr></thead><tbody>' +
       list.map((p) => '<tr class="' + (p.active ? '' : 'off') + '"><td><span class="thumb-sm" style="--h:' + hue(p.cat) + '">' + (p.img ? '<img src="' + esc(p.img) + '" alt="">' : esc(p.emoji)) + '</span></td>' +
-        '<td class="title-cell"><b title="' + esc(p.title) + '">' + esc(p.title) + '</b><small>' + esc(p.brand) + ' • کد ' + fa(p.id) + '</small></td>' +
+        '<td class="title-cell"><b title="' + esc(p.title) + '">' + esc(p.title) + '</b><small>' + esc(p.brand) + '، کد ' + fa(p.id) + '</small></td>' +
         '<td>' + esc(catName(p.cat)) + '</td><td class="num">' + toman(p.price) + '</td><td class="num">' + (p.off ? fa(p.off) + '٪' : '—') + '</td>' +
         '<td class="num"><span class="stock-badge' + (p.stock <= 3 ? ' low' : '') + '">' + fa(p.stock) + '</span></td><td class="num">' + fa(p.sold) + '</td>' +
         '<td>' + (p.active ? '<span class="pill ok">فعال</span>' : '<span class="pill bad">پنهان</span>') + '</td>' +
@@ -377,9 +377,9 @@
         (o.couponDisc ? '<tr><td class="muted">کد تخفیف ' + esc(o.coupon) + '</td><td class="num">' + toman(o.couponDisc) + '−</td></tr>' : '') +
         '<tr><td class="muted">ارسال ' + (o.ship === 'express' ? 'اکسپرس' : 'عادی') + '</td><td class="num">' + (o.shipCost ? toman(o.shipCost) : 'رایگان') + '</td></tr>' +
         '<tr><td><b>مبلغ نهایی</b></td><td class="num"><b>' + toman(o.total) + '</b></td></tr>' +
-        '<tr><td class="muted">پرداخت</td><td>' + (o.payMethod === 'cod' ? 'در محل' : 'اینترنتی') + (o.refId ? ' • کد رهگیری <span class="num">' + fd(o.refId) + '</span>' : '') + '</td></tr>' +
+        '<tr><td class="muted">پرداخت</td><td>' + (o.payMethod === 'cod' ? 'در محل' : 'اینترنتی') + (o.refId ? '، کد رهگیری <span class="num">' + fd(o.refId) + '</span>' : '') + '</td></tr>' +
       '</tbody></table></div>' +
-      '<div class="notice info"><b>تحویل به:</b> ' + esc(a.name) + ' • <span class="num">' + fd(a.phone) + '</span><br>' + esc(a.province) + '، ' + esc(a.city) + '، ' + esc(a.address) + '<br>کد پستی: <span class="num">' + fd(a.postal) + '</span></div>', true);
+      '<div class="notice info"><b>تحویل به:</b> ' + esc(a.name) + '، <span class="num">' + fd(a.phone) + '</span><br>' + esc(a.province) + '، ' + esc(a.city) + '، ' + esc(a.address) + '<br>کد پستی: <span class="num">' + fd(a.postal) + '</span></div>', true);
   }
 
   /* =====================================================================

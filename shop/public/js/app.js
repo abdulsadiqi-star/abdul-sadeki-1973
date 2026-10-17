@@ -502,7 +502,7 @@
   function buyBox(p) {
     const q = cartQtyFor(p);
     return '<aside class="buybox" id="buybox">' +
-      '<div class="seller"><span class="av">' + esc(CFG.storeName.charAt(0)) + '</span><div><b>فروشگاه ' + N() + '</b><div style="font-size:11px;color:var(--muted)">عملکرد عالی • ۹۸٪ رضایت خریداران</div></div></div>' +
+      '<div class="seller"><span class="av">' + esc(CFG.storeName.charAt(0)) + '</span><div><b>فروشگاه ' + N() + '</b><div style="font-size:11px;color:var(--muted)">عملکرد عالی، ۹۸٪ رضایت خریداران</div></div></div>' +
       '<div class="perk">' + ic('shield') + 'گارانتی اصالت و سلامت فیزیکی کالا</div>' +
       '<div class="perk">' + ic('truck') + (p.stock ? 'موجود در انبار ' + N() + '، ارسال از امروز' : 'در حال حاضر موجود نیست') + '</div>' +
       '<div class="perk">' + ic('refresh') + '۷ روز ضمانت بازگشت کالا</div>' +
@@ -605,7 +605,7 @@
             f('postal', 'کد پستی ۱۰ رقمی', 'required inputmode="numeric"') +
           '</div></section>' +
           '<section class="panel co-section"><h2>شیوه ارسال</h2>' +
-            '<label class="choice"><input type="radio" name="ship" value="normal"' + (S.ship === 'normal' ? ' checked' : '') + '><div><b>ارسال عادی</b><span>تحویل ۲ تا ۴ روز کاری • رایگان برای خرید بالای ' + fa(FREE_SHIP) + ' تومان</span></div><span class="c-price num">' + (t.payable >= FREE_SHIP ? 'رایگان' : fa(SHIP_NORMAL) + ' تومان') + '</span></label>' +
+            '<label class="choice"><input type="radio" name="ship" value="normal"' + (S.ship === 'normal' ? ' checked' : '') + '><div><b>ارسال عادی</b><span>تحویل ۲ تا ۴ روز کاری، رایگان برای خرید بالای ' + fa(FREE_SHIP) + ' تومان</span></div><span class="c-price num">' + (t.payable >= FREE_SHIP ? 'رایگان' : fa(SHIP_NORMAL) + ' تومان') + '</span></label>' +
             '<label class="choice"><input type="radio" name="ship" value="express"' + (S.ship === 'express' ? ' checked' : '') + '><div><b>ارسال اکسپرس</b><span>تحویل امروز یا فردا (فقط تهران و کرج)</span></div><span class="c-price num">' + fa(SHIP_EXPRESS) + ' تومان</span></label>' +
           '</section>' +
           '<section class="panel co-section"><h2>شیوه پرداخت</h2>' +
@@ -700,7 +700,7 @@
       (o.status === 'payment_failed' ? '<p style="color:var(--muted)">اگر مبلغی از حساب شما کم شده باشد، حداکثر تا ۷۲ ساعت به حساب‌تان برمی‌گردد.</p>' : '') +
       '<p style="color:var(--muted);margin:0">کد سفارش:</p><div class="code num">' + esc(o.code) + '</div>' +
       (o.refId ? '<p class="num" style="margin:0 0 6px">کد رهگیری پرداخت: <b>' + fd(o.refId) + '</b></p>' : '') +
-      '<p style="color:var(--muted);margin:0 0 18px" class="num">مبلغ ' + fa(o.total) + ' تومان • ' + (o.payMethod === 'cod' ? 'پرداخت در محل' : 'پرداخت اینترنتی') + ' • ' + (o.ship === 'express' ? 'ارسال اکسپرس' : 'ارسال عادی') + '</p>' +
+      '<p style="color:var(--muted);margin:0 0 18px" class="num">مبلغ ' + fa(o.total) + ' تومان، ' + (o.payMethod === 'cod' ? 'پرداخت در محل' : 'پرداخت اینترنتی') + '، ' + (o.ship === 'express' ? 'ارسال اکسپرس' : 'ارسال عادی') + '</p>' +
       '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
         (failed && o.items ? '<button class="btn btn-primary" type="button" data-reorder="' + esc(o.code) + '">برگرداندن کالاها به سبد خرید</button>' : '<a class="btn btn-primary" href="#/account" data-go="account">پیگیری سفارش</a>') +
         '<a class="btn btn-ghost" href="#/" data-go="">ادامه خرید</a></div></div></div>';
