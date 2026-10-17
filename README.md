@@ -154,3 +154,12 @@ catalog are already set up (AGP 8.7.3, Kotlin 2.0.21, Compose BOM
 - Date/number formatting is centralized in `util/Formatters.kt` but uses the
   Gregorian calendar for both locales; swapping in a Jalali calendar for
   Persian is a contained change to that one file.
+
+---
+
+## Kalano online shop (`shop/`)
+
+This repository also contains **Kalano**, a Persian RTL online store with a
+zero-dependency Node.js server (built-in SQLite), an admin panel, ZarinPal
+payments and Kavenegar SMS login. See [`shop/README.md`](shop/README.md)
+(in Persian) for setup, configuration and deployment.

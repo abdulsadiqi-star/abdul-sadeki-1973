@@ -16,3 +16,8 @@ local.properties
 .navigation/
 /app/release/
 /app/debug/
+
+# Shop server
+shop/.env
+shop/data/
+shop/node_modules/

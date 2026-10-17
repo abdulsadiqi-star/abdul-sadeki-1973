@@ -106,5 +106,20 @@ window.SHOP = (function () {
     34: [{ name: 'نگار ک.', rate: 5, date: '۱۴۰۵/۰۶/۲۸', text: 'ترجمه روان و چاپ خوب. پیشنهاد می‌کنم حتماً بخونید.', buy: true }]
   };
 
-  return { categories: categories, products: products, slides: slides, reviews: reviews };
+  // تنظیمات پیش‌فرض فروشگاه. وقتی سایت با سرور اجرا شود، این مقادیر از پنل مدیریت خوانده می‌شوند.
+  const settings = {
+    storeName: 'کالانو',
+    phone: '۰۲۱-۹۱۰۰۰۰۰۰',
+    brandColor: '#f2613f',
+    accentColor: '#ffc83d',
+    freeShip: 1000000,
+    shipNormal: 49000,
+    shipExpress: 89000,
+    maxPerItem: 5
+  };
+
+  // کدهای تخفیف حالت نمایشی (بدون سرور). در حالت سرور از پنل مدیریت ساخته می‌شوند.
+  const coupons = { KALANO10: { pct: 10, cap: 300000 } };
+
+  return { categories: categories, products: products, slides: slides, reviews: reviews, settings: settings, coupons: coupons };
 })();
