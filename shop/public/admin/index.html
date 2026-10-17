@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>پنل مدیریت فروشگاه</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="../css/style.css">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body class="admin-body">
+
+<div id="noServer" class="login-wrap" hidden>
+  <div class="panel login-box">
+    <div class="logo"><span class="logo-mark">پنل مدیریت</span><span class="logo-dot"></span></div>
+    <h2>سرور در دسترس نیست</h2>
+    <p>پنل مدیریت فقط وقتی کار می‌کند که فروشگاه با سرور اجرا شود. در پوشه‌ی <code>shop</code> دستور <code>npm start</code> را اجرا کنید و سپس آدرس <code>http://localhost:3000/admin/</code> را باز کنید.</p>
+    <a class="btn btn-ghost" href="../">بازگشت به فروشگاه</a>
+  </div>
+</div>
+
+<div id="login" class="login-wrap" hidden>
+  <form class="panel login-box" id="loginForm" novalidate>
+    <div class="logo"><span class="logo-mark" data-store-name>کالانو</span><span class="logo-dot"></span></div>
+    <h2>ورود به پنل مدیریت</h2>
+    <label class="field">رمز عبور مدیر<input id="adminPw" type="password" autocomplete="current-password" required></label>
+    <span class="err" id="loginErr" role="alert"></span>
+    <button class="btn btn-primary btn-block" type="submit" id="loginBtn">ورود</button>
+  </form>
+</div>
+
+<div id="shell" class="admin" hidden>
+  <aside class="side" aria-label="منوی پنل مدیریت">
+    <div class="brand-row"><span class="logo-mark" data-store-name>کالانو</span><span class="logo-dot"></span><small>مدیریت</small></div>
+    <nav class="side-nav" id="sideNav"></nav>
+    <div class="side-foot">
+      <a href="../" target="_blank" rel="noopener">مشاهده فروشگاه ↗</a>
+      <button type="button" id="logoutBtn">خروج</button>
+    </div>
+  </aside>
+  <main class="main" id="view" tabindex="-1"></main>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div id="modalRoot"></div>
+
+<script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "kalano-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "فروشگاه اینترنتی فارسی با پنل مدیریت، درگاه زرین‌پال و ورود پیامکی",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}
