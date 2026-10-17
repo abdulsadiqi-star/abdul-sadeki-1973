@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>فروشگاه کالانو</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="کالانو، فروشگاه اینترنتی با هزاران کالا، ارسال سریع، ضمانت اصالت و ۷ روز ضمانت بازگشت">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="header">
+  <div class="wrap header-top">
+    <a class="logo" href="#/" data-go="" aria-label="کالانو، صفحه اصلی"><span class="logo-mark">کالانو</span><span class="logo-dot"></span></a>
+    <div class="search" role="search">
+      <span class="s-icon" data-ic="search"></span>
+      <input id="q" type="search" autocomplete="off" placeholder="جستجو در کالانو، مثلاً «هدفون» یا «سامسونگ»" aria-label="جستجو">
+      <div class="suggest" id="suggest" hidden></div>
+    </div>
+    <div class="h-actions">
+      <button class="icon-btn lg-only" id="themeBtn" type="button" aria-label="تغییر حالت روشن و تاریک"><span data-ic="moon"></span></button>
+      <a class="icon-btn" href="#/account" data-go="account" id="accBtn"><span data-ic="user"></span><span class="txt" id="accTxt">ورود | ثبت‌نام</span></a>
+      <a class="icon-btn lg-only" href="#/wish" data-go="wish" aria-label="علاقه‌مندی‌ها"><span data-ic="heart"></span><span class="badge num" id="wishBadge"></span></a>
+      <a class="icon-btn" href="#/cart" data-go="cart" aria-label="سبد خرید"><span data-ic="cart"></span><span class="badge num" id="cartBadge"></span></a>
+    </div>
+  </div>
+  <nav class="wrap nav" aria-label="منوی اصلی">
+    <div class="mega-wrap" id="megaWrap">
+      <button type="button" id="megaBtn" aria-expanded="false"><span data-ic="menu"></span>دسته‌بندی کالاها</button>
+      <div class="mega" id="mega" hidden></div>
+    </div>
+    <span class="sep"></span>
+    <a href="#/offers" data-go="offers" class="hot">پیشنهاد شگفت‌انگیز</a>
+    <a href="#/c/market" data-go="c/market">سوپرمارکت</a>
+    <a href="#/best" data-go="best">پرفروش‌ترین‌ها</a>
+    <a href="#/new" data-go="new">جدیدترین‌ها</a>
+    <a href="#/c/mobile" data-go="c/mobile">موبایل</a>
+    <a href="#/c/home" data-go="c/home">لوازم خانگی</a>
+  </nav>
+</header>
+
+<main id="app" tabindex="-1"></main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <a class="logo" href="#/" data-go=""><span class="logo-mark">کالانو</span><span class="logo-dot"></span></a>
+      <span class="contact num">تلفن پشتیبانی: ۰۲۱-۹۱۰۰۰۰۰۰ · هر روز هفته، ۲۴ ساعته</span>
+      <button class="to-top" type="button" id="toTop">بازگشت به بالا ↑</button>
+    </div>
+    <div class="footer-cols">
+      <div>
+        <h4>با کالانو</h4>
+        <ul><li><a href="#/" data-go="">درباره ما</a></li><li><a href="#/" data-go="">فرصت‌های شغلی</a></li><li><a href="#/" data-go="">فروشنده شوید</a></li><li><a href="#/" data-go="">تماس با ما</a></li></ul>
+      </div>
+      <div>
+        <h4>خدمات مشتریان</h4>
+        <ul><li><a href="#/" data-go="">پاسخ به پرسش‌های متداول</a></li><li><a href="#/" data-go="">رویه بازگرداندن کالا</a></li><li><a href="#/" data-go="">شرایط استفاده</a></li><li><a href="#/" data-go="">حریم خصوصی</a></li></ul>
+      </div>
+      <div>
+        <h4>راهنمای خرید</h4>
+        <ul><li><a href="#/" data-go="">نحوه ثبت سفارش</a></li><li><a href="#/" data-go="">رویه ارسال سفارش</a></li><li><a href="#/" data-go="">شیوه‌های پرداخت</a></li><li><a href="#/account" data-go="account">پیگیری سفارش</a></li></ul>
+      </div>
+      <div class="nl">
+        <h4>از تخفیف‌ها باخبر شوید</h4>
+        <form class="newsletter" id="newsletter">
+          <input id="nlEmail" type="email" required placeholder="ایمیل شما" aria-label="ایمیل">
+          <button class="btn btn-primary" type="submit">ثبت</button>
+        </form>
+      </div>
+    </div>
+    <div class="footer-about">
+      <div>
+        <h4 style="margin:0 0 6px">فروشگاه اینترنتی کالانو، خرید آسان و مطمئن</h4>
+        <p>کالانو تلاش می‌کند هر کالایی را که نیاز دارید با بهترین قیمت، ضمانت اصالت و ارسال سریع به دستتان برساند. امکان پرداخت در محل، ۷ روز ضمانت بازگشت کالا و پشتیبانی شبانه‌روزی از اصول خرید در کالانو است.</p>
+      </div>
+      <div class="trust"><span>نماد اعتماد الکترونیکی</span><span>ساماندهی کسب‌وکار</span></div>
+    </div>
+  </div>
+  <div class="copy wrap">این وب‌سایت یک نمونه آموزشی است و سفارش واقعی ثبت نمی‌کند.</div>
+</footer>
+
+<nav class="bottom-nav" aria-label="منوی پایین">
+  <a href="#/" data-go="" data-tab=""><span data-ic="home"></span>خانه</a>
+  <a href="#/cats" data-go="cats" data-tab="cats"><span data-ic="grid"></span>دسته‌بندی</a>
+  <a href="#/cart" data-go="cart" data-tab="cart"><span data-ic="cart"></span>سبد خرید<span class="badge num" id="cartBadge2"></span></a>
+  <a href="#/account" data-go="account" data-tab="account"><span data-ic="user"></span>کالانوی من</a>
+</nav>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div id="modalRoot"></div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
