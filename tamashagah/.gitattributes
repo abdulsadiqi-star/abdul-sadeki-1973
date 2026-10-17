@@ -1,0 +1,7 @@
+# Keep LF endings on every platform: env files, SQL and shell scripts are read inside Linux containers.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.mp4 binary
