@@ -1,0 +1,43 @@
+# TLS reverse proxy overlay (Caddy + automatic Let's Encrypt certificates).
+#
+#   SITE_ADDRESS=tamashagah.example.com            # in .env — a domain whose DNS points at this host
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml --profile app up -d --build
+#
+# Only Caddy is published (80/443); the app is reached through it. Switches the app to production HTTPS settings:
+# APP_URL=https://$SITE_ADDRESS, secure __Host- session cookies, one trusted proxy hop for client IPs (rate limits).
+name: tamashagah
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS (your domain name) in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    profiles: ["app"]
+    ports: !reset []
+    environment:
+      APP_URL: https://${SITE_ADDRESS:?set SITE_ADDRESS (your domain name) in .env}
+      ALLOW_INSECURE_HTTP: "false"
+      TRUSTED_PROXY_HOPS: "1"
+
+  worker:
+    environment:
+      APP_URL: https://${SITE_ADDRESS:?set SITE_ADDRESS (your domain name) in .env}
+      ALLOW_INSECURE_HTTP: "false"
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,230 @@
+name: tamashagah-ci
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["tamashagah/**", ".github/workflows/tamashagah-ci.yml"]
+  pull_request:
+    paths: ["tamashagah/**", ".github/workflows/tamashagah-ci.yml"]
+
+concurrency:
+  group: tamashagah-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: tamashagah
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  quality:
+    name: Lint · typecheck · unit · component
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: tamashagah/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tamashagah/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm audit:security
+      - name: Known vulnerabilities in production dependencies
+        run: pnpm audit --prod --audit-level=high
+      - run: pnpm test:unit
+      - run: pnpm test:components
+
+  integration:
+    name: Integration (PostgreSQL + Redis)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: tamashagah_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://ci:ci-only-password@localhost:5432/tamashagah_test
+      DATABASE_URL_TEST: postgresql://ci:ci-only-password@localhost:5432/tamashagah_test
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg (worker/pipeline tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        working-directory: .
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: tamashagah/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tamashagah/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:integration
+
+  e2e:
+    name: End-to-end (Playwright, desktop + mobile)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: tamashagah
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://ci:ci-only-password@localhost:5432/tamashagah
+      REDIS_URL: redis://localhost:6379
+      APP_URL: http://localhost:3100
+      ALLOW_INSECURE_HTTP: "true"
+      STORAGE_DRIVER: fs
+      STORAGE_FS_ROOT: .data/storage
+      MAIL_TRANSPORT: file
+      MAIL_FILE_DIR: .data/mailbox
+      E2E_BASE_URL: http://localhost:3100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+        working-directory: .
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: tamashagah/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tamashagah/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Generate a random session secret
+        run: echo "SESSION_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - run: pnpm db:deploy
+      - run: pnpm db:seed
+      - name: Demo catalogue (the discovery and admin specs search and moderate it)
+        run: pnpm exec tsx --env-file-if-exists=.env scripts/seed-discovery.ts
+      - run: pnpm build
+      - name: Start web app and worker
+        run: |
+          mkdir -p .data
+          PORT=3100 nohup pnpm start > .data/web.log 2>&1 &
+          if [ -f worker/index.ts ]; then pnpm build:worker && nohup pnpm start:worker > .data/worker.log 2>&1 & fi
+          for i in $(seq 1 60); do curl -fs http://localhost:3100/api/health && break; sleep 1; done
+      - run: pnpm test:e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            tamashagah/playwright-report
+            tamashagah/test-results
+            tamashagah/.data/*.log
+          if-no-files-found: ignore
+
+  storage-s3:
+    name: Storage self-test (S3-compatible server)
+    needs: quality
+    runs-on: ubuntu-latest
+    services:
+      objectstore:
+        image: rustfs/rustfs:1.0.1
+        env:
+          # Throw-away credentials of an ephemeral CI container — not secrets.
+          RUSTFS_ACCESS_KEY: ci-access-key
+          RUSTFS_SECRET_KEY: ci-secret-key-0123456789
+        ports: ["9000:9000"]
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/health" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: tamashagah
+      S3_ACCESS_KEY_ID: ci-access-key
+      S3_SECRET_ACCESS_KEY: ci-secret-key-0123456789
+      S3_FORCE_PATH_STYLE: "true"
+      ALLOW_INSECURE_HTTP: "true"
+      # Required by the shared env schema; this job never connects to them.
+      DATABASE_URL: postgresql://ci:ci-only-password@localhost:5432/unused
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: tamashagah/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tamashagah/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Create the bucket
+        run: aws --endpoint-url "$S3_ENDPOINT" --region us-east-1 s3 mb "s3://$S3_BUCKET"
+        env:
+          AWS_ACCESS_KEY_ID: ci-access-key
+          AWS_SECRET_ACCESS_KEY: ci-secret-key-0123456789
+      - name: Put / get / range / multipart / presign / list / delete
+        run: pnpm check:storage
+        env:
+          SESSION_SECRET: ci-only-session-secret-0123456789abcdef0123456789abcdef
+
+  compose-smoke:
+    name: Docker Compose stack (build · migrate · boot · health)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create .env with generated secrets
+        run: node scripts/init-env.mjs
+      - name: Build images and start the whole stack
+        run: docker compose --profile app up -d --build --wait --wait-timeout 900
+      - name: Deep health check (database, Redis, object storage)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' 'http://localhost:3000/api/health?deep=1' || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          cat /tmp/health.json; echo
+          test "$code" = "200"
+      - name: Home page is served in Persian, RTL
+        run: curl -fsS http://localhost:3000/ | grep -q '<html lang="fa" dir="rtl"'
+      - name: Storage self-test from inside the worker container
+        run: docker compose exec -T worker node dist/scripts/check-storage.mjs
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose --profile app down -v

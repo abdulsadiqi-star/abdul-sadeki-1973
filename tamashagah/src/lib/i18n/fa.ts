@@ -1,0 +1,100 @@
+/**
+ * Shared Persian labels for enums and recurring UI strings.
+ * Feature-specific copy lives next to its component; anything that appears in
+ * more than one place (status badges, role names, ...) belongs here.
+ */
+
+export const labels = {
+  role: { USER: 'کاربر', CREATOR: 'سازنده', MODERATOR: 'ناظر', ADMIN: 'مدیر' },
+  visibility: { PUBLIC: 'عمومی', UNLISTED: 'فقط با لینک', PRIVATE: 'خصوصی' },
+  visibilityHint: {
+    PUBLIC: 'همه می‌توانند ببینند و در جستجو پیدا می‌کنند.',
+    UNLISTED: 'فقط کسانی که لینک را دارند می‌توانند ببینند.',
+    PRIVATE: 'فقط شما (و ناظران سایت) می‌توانید ببینید.',
+  },
+  processing: {
+    AWAITING_UPLOAD: 'در انتظار تکمیل آپلود',
+    QUEUED: 'در صف پردازش',
+    PROCESSING: 'در حال پردازش',
+    READY: 'آماده',
+    FAILED: 'ناموفق',
+  },
+  publish: { DRAFT: 'منتشر نشده', SCHEDULED: 'زمان‌بندی شده', PUBLISHED: 'منتشر شده' },
+  jobStage: {
+    PROBE: 'بررسی فایل',
+    TRANSCODE: 'تبدیل به کیفیت‌های مختلف',
+    THUMBNAILS: 'ساخت تصویر بندانگشتی',
+    PACKAGE: 'بسته‌بندی برای پخش',
+    FINALIZE: 'نهایی‌سازی',
+  },
+  videoKind: { VIDEO: 'ویدیو', SHORT: 'شورتس' },
+  commentStatus: {
+    PENDING: 'در انتظار تأیید',
+    APPROVED: 'تأیید شده',
+    REJECTED: 'ردشده',
+    SPAM: 'هرزنامه',
+    DELETED: 'حذف شده',
+  },
+  commentsMode: {
+    OPEN: 'انتشار فوری دیدگاه‌ها',
+    APPROVAL_REQUIRED: 'نیاز به تأیید من',
+    DISABLED: 'بستن دیدگاه‌ها',
+  },
+  reportReason: {
+    SPAM: 'هرزنامه یا تبلیغ مزاحم',
+    ABUSE: 'توهین یا آزار',
+    HATE: 'نفرت‌پراکنی',
+    VIOLENCE: 'خشونت',
+    ADULT: 'محتوای نامناسب',
+    COPYRIGHT: 'نقض حق تکثیر',
+    MISINFORMATION: 'اطلاعات نادرست',
+    OTHER: 'سایر موارد',
+  },
+  reportStatus: { OPEN: 'باز', REVIEWING: 'در حال بررسی', ACTIONED: 'اقدام شد', DISMISSED: 'رد شد' },
+  monetization: {
+    DRAFT: 'پیش‌نویس',
+    SUBMITTED: 'ارسال شده',
+    UNDER_REVIEW: 'در حال بررسی',
+    APPROVED: 'تأیید شده',
+    REJECTED: 'رد شده',
+    SUSPENDED: 'معلق',
+  },
+  verification: { SUBMITTED: 'ارسال شده', UNDER_REVIEW: 'در حال بررسی', APPROVED: 'تأیید شده', REJECTED: 'رد شده' },
+  ticketStatus: { OPEN: 'باز', ANSWERED: 'پاسخ داده شده', CLOSED: 'بسته شده' },
+  ticketCategory: {
+    ACCOUNT: 'حساب کاربری',
+    UPLOAD: 'بارگذاری ویدیو',
+    PLAYBACK: 'پخش ویدیو',
+    COPYRIGHT: 'حق تکثیر',
+    MONETIZATION: 'درآمدزایی',
+    REPORT_ABUSE: 'گزارش تخلف',
+    OTHER: 'سایر',
+  },
+  device: { DESKTOP: 'رایانه', MOBILE: 'موبایل', TABLET: 'تبلت', TV: 'تلویزیون', OTHER: 'سایر' },
+} as const;
+
+export const common = {
+  loading: 'در حال بارگذاری…',
+  save: 'ذخیره',
+  saveChanges: 'ذخیره‌ی تغییرات',
+  cancel: 'انصراف',
+  delete: 'حذف',
+  edit: 'ویرایش',
+  confirm: 'تأیید',
+  close: 'بستن',
+  back: 'بازگشت',
+  next: 'بعدی',
+  previous: 'قبلی',
+  search: 'جستجو',
+  retry: 'تلاش دوباره',
+  more: 'بیشتر',
+  seeAll: 'مشاهده‌ی همه',
+  viewChannel: 'مشاهده‌ی کانال',
+  upload: 'بارگذاری ویدیو',
+  login: 'ورود',
+  register: 'ثبت‌نام',
+  logout: 'خروج از حساب',
+  genericError: 'مشکلی پیش آمد. لطفاً دوباره تلاش کنید.',
+  networkError: 'ارتباط با سرور برقرار نشد. اینترنت خود را بررسی کنید.',
+  required: 'این فیلد الزامی است.',
+} as const;

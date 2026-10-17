@@ -1,0 +1,172 @@
+# Local development + single-host deployment.
+#
+#   docker compose up -d                       # infrastructure only (postgres, redis, S3-compatible store, mailpit)
+#   docker compose --profile app up -d --build # + migrations + web + worker in containers
+#
+# Secrets come from .env (create it with `pnpm setup:env`); nothing sensitive is hard-coded here.
+# Host ports can be changed when they clash with local services: POSTGRES_PORT, REDIS_PORT, S3_PORT, S3_CONSOLE_PORT,
+# MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, WEB_PORT.
+name: tamashagah
+
+# Settings shared by web and worker.
+#  * secrets and values that depend on the bundled services are wired here from .env;
+#  * non-secret defaults for the bundled stack live in docker/defaults.env;
+#  * anything you put in .env.docker (optional, git-ignored) overrides those defaults and adds more settings —
+#    e.g. a real SMTP provider, an external S3 service, upload limits. See docker/env.docker.example.
+x-app-env: &app-env
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  DATABASE_URL: postgresql://tamashagah:${POSTGRES_PASSWORD:?run "pnpm setup:env" first}@postgres:5432/tamashagah
+  SESSION_SECRET: ${SESSION_SECRET:?run "pnpm setup:env" first}
+  S3_BUCKET: ${S3_BUCKET:-tamashagah}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run "pnpm setup:env" first}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run "pnpm setup:env" first}
+  MAIL_FROM: ${MAIL_FROM:-تماشاگاه <no-reply@localhost>}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  ALLOW_INSECURE_HTTP: ${ALLOW_INSECURE_HTTP:-true}
+  TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+
+x-app-env-files: &app-env-files
+  - path: docker/defaults.env
+  - path: .env.docker
+    required: false
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tamashagah
+      POSTGRES_DB: tamashagah
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run "pnpm setup:env" first}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tamashagah -d tamashagah"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible object store for development and single-host deployments (RustFS, Apache-2.0).
+  # In production point S3_ENDPOINT/S3_* at your own S3 service (AWS S3, Arvan, Liara, Ceph, ...) and drop these two services.
+  # `pnpm check:storage` verifies any backend (multipart, ranges, presigned URLs, listing, deletion).
+  objectstore:
+    image: rustfs/rustfs:1.0.1
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?run "pnpm setup:env" first}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?run "pnpm setup:env" first}
+    ports:
+      - "127.0.0.1:${S3_PORT:-9000}:9000" # S3 API
+      - "127.0.0.1:${S3_CONSOLE_PORT:-9001}:9001" # web console
+    volumes:
+      - objectstore-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Creates the private bucket once (no anonymous access) with the AWS CLI — works against any S3 endpoint.
+  objectstore-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      objectstore:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run "pnpm setup:env" first}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run "pnpm setup:env" first}
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_EC2_METADATA_DISABLED: "true"
+      S3_BUCKET: ${S3_BUCKET:-tamashagah}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        aws --endpoint-url http://objectstore:9000 s3api head-bucket --bucket "$$S3_BUCKET" 2>/dev/null ||
+          aws --endpoint-url http://objectstore:9000 s3api create-bucket --bucket "$$S3_BUCKET" >/dev/null
+        echo "bucket $$S3_BUCKET ready"
+    restart: "no"
+
+  # Catches every e-mail the app sends (UI on http://localhost:8025) — verification and reset links.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+
+  # ------------------------------ application (profile "app") ------------------------------
+  migrate:
+    profiles: ["app"]
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://tamashagah:${POSTGRES_PASSWORD:?run "pnpm setup:env" first}@postgres:5432/tamashagah
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    env_file: *app-env-files
+    environment: *app-env
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      objectstore-init:
+        condition: service_completed_successfully
+
+  worker:
+    profiles: ["app"]
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    env_file: *app-env-files
+    environment:
+      <<: *app-env
+      SERVICE_NAME: worker
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      objectstore-init:
+        condition: service_completed_successfully
+    # Transcoding scratch space (WORKER_TMP_DIR). Disk-backed on purpose: tmpfs would count against RAM.
+    # Point this volume at a fast disk with room for a few source files plus their renditions.
+    volumes:
+      - worker-tmp:/var/tmp/tamashagah
+
+volumes:
+  pgdata:
+  redisdata:
+  objectstore-data:
+  worker-tmp:
